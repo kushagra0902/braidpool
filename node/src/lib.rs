@@ -1,16 +1,24 @@
 //These implementations must be defined under lib.rs as they are required for intergration tests
 use bitcoin::{
-    consensus::encode::deserialize, ecdsa::Signature, BlockHash, CompactTarget, EcdsaSighashType,
+    consensus::encode::deserialize, ecdsa::Signature, pow::CompactTargetExt, BlockHash,
+    CompactTarget, EcdsaSighashType, Txid,
 };
 use num::ToPrimitive;
-use std::{collections::HashSet, str::FromStr, sync::Arc, time::UNIX_EPOCH};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+    sync::Arc,
+    time::UNIX_EPOCH,
+};
 
 use futures::lock::Mutex;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::{
     bead::Bead,
-    committed_metadata::{CommittedMetadata, TimeVec},
+    braid::Braid,
+    committed_metadata::{CommittedMetadata, TimeVec, TxIdVec},
+    db::BraidpoolDBTypes,
     error::{IPCtemplateError, StratumErrors},
     stratum::{BlockTemplate, NotifyCmd},
     uncommitted_metadata::UnCommittedMetadata,
@@ -22,6 +30,7 @@ pub mod braid;
 pub mod cli;
 pub mod committed_metadata;
 pub mod config;
+pub mod db;
 pub mod error;
 pub mod ipc;
 pub mod peer_manager;
@@ -30,6 +39,8 @@ pub mod stratum;
 pub mod template_creator;
 pub mod uncommitted_metadata;
 pub mod utils;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 //Including the capnp modules after building while compiling the workspace.package
 pub mod proxy_capnp {
     include!(concat!(env!("OUT_DIR"), "/proxy_capnp.rs"));
@@ -45,6 +56,15 @@ pub mod common_capnp {
 }
 pub mod init_capnp {
     include!(concat!(env!("OUT_DIR"), "/init_capnp.rs"));
+}
+
+/// Global template ID counter that persists across the application lifetime
+static GLOBAL_TEMPLATE_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// Get the next unique template ID (increments on each call)
+pub fn get_next_template_id() -> String {
+    let id = GLOBAL_TEMPLATE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    id.to_string()
 }
 
 /// **Length of the extranonce prefix (in bytes).**
@@ -91,26 +111,73 @@ pub const EXTRANONCE_SEPARATOR: [u8; EXTRANONCE1_SIZE + EXTRANONCE2_SIZE] =
 /// * `Ok(())` - When the consumer loop completes without errors.
 /// * `Err(IPCtemplateError)` - If an unrecoverable IPC template handling error occurs.
 pub async fn ipc_template_consumer(
-    mut template_rx: mpsc::Receiver<(Vec<u8>, Vec<Vec<u8>>)>,
+    mut template_rx: mpsc::Receiver<Arc<crate::ipc::client::BlockTemplate>>,
     notifier_tx: mpsc::Sender<NotifyCmd>,
     latest_template_arc: &mut Arc<Mutex<BlockTemplate>>,
     latest_template_merkle_branch_arc: &mut Arc<Mutex<Vec<Vec<u8>>>>,
+    template_cache: Arc<
+        tokio::sync::Mutex<HashMap<String, Arc<crate::ipc::client::BlockTemplate>>>,
+    >,
+    latest_template_id: Arc<Mutex<String>>,
 ) -> Result<(), IPCtemplateError> {
-    while let Some(template_bytes) = template_rx.recv().await {
-        if template_bytes.0.len() > 0 {
+    /// Maximum number of block templates to retain in the in-memory cache.
+    ///
+    /// This constant limits how many recent block templates, fetched via IPC from Bitcoin node,
+    /// are kept available for downstream miners. When the cache exceeds this size, the oldest
+    /// templates are evicted to make room for new ones. This helps prevent unbounded memory
+    /// growth and ensures efficient resource usage.
+    const MAX_CACHED_TEMPLATES: usize = 90;
+
+    while let Some(ipc_template) = template_rx.recv().await {
+        let template_bytes = match &ipc_template.processed_block_hex {
+            Some(processed_hex) if !processed_hex.is_empty() => processed_hex,
+            _ => {
+                log::warn!("Skipping template: processed_block_hex is missing or empty");
+                continue;
+            }
+        };
+
+        if template_bytes.len() > 0 {
+            // Generate new template_id for every template
+            let template_id = get_next_template_id();
+            {
+                let mut latest_id = latest_template_id.lock().await;
+                *latest_id = template_id.clone();
+            }
+
+            // Cache the IPC template with this new ID
+            {
+                let mut cache = template_cache.lock().await;
+                cache.insert(template_id.clone(), ipc_template.clone());
+
+                // Cleanup old templates
+                if cache.len() > MAX_CACHED_TEMPLATES {
+                    let mut ids: Vec<u64> =
+                        cache.keys().filter_map(|k| k.parse::<u64>().ok()).collect();
+                    ids.sort();
+
+                    let remove_count = cache.len() - MAX_CACHED_TEMPLATES;
+                    for id in ids.iter().take(remove_count) {
+                        cache.remove(&id.to_string());
+                        log::debug!("Removed old template {} from cache", id);
+                    }
+                }
+            }
+
             let candidate_block: Result<
                 bitcoin::blockdata::block::Block,
                 bitcoin::consensus::DeserializeError,
-            > = deserialize(&template_bytes.0.clone());
-            let merkle_branch_coinbase = template_bytes.1.clone();
+            > = deserialize(&template_bytes);
+
+            let merkle_branch_coinbase = ipc_template.components.coinbase_merkle_path.clone();
             let (template_header, template_transactions) = candidate_block.unwrap().into_parts();
-            let coinbase_transaction = template_transactions.get(0);
-            log::info!("Coinbase transaction is - {:?}", coinbase_transaction);
-            log::info!(
+            let _coinbase_transaction = template_transactions.get(0);
+
+            log::debug!(
                 "The block header for the given template is - {:?}",
                 template_header
             );
-            log::info!("Transactions count is - {}", template_transactions.len());
+            log::debug!("Transactions count is - {}", template_transactions.len());
             let template: BlockTemplate = BlockTemplate {
                 version: template_header.version,
                 previousblockhash: template_header.prev_blockhash,
@@ -144,8 +211,8 @@ pub async fn ipc_template_consumer(
                 template.default_witness_commitment.clone();
             let mut latest_template_merkle_branch = latest_template_merkle_branch_arc.lock().await;
             latest_template_merkle_branch.clear();
-            for branch in template_bytes.1.into_iter() {
-                latest_template_merkle_branch.push(branch);
+            for branch in merkle_branch_coinbase.iter() {
+                latest_template_merkle_branch.push(branch.clone());
             }
             log::info!(
                 "Latest template has been updated with the most recently received template from IPC"
@@ -155,6 +222,7 @@ pub async fn ipc_template_consumer(
                 .send(NotifyCmd::SendToAll {
                     template: template,
                     merkle_branch_coinbase,
+                    template_id: template_id.clone(),
                 })
                 .await;
             match notification_sent_or_not {
@@ -177,14 +245,21 @@ pub enum SwarmCommand {
 }
 pub struct SwarmHandler {
     pub command_sender: Sender<SwarmCommand>,
+    braid_arc: Arc<tokio::sync::RwLock<Braid>>,
+    db_command_sender: tokio::sync::mpsc::Sender<BraidpoolDBTypes>,
 }
 impl SwarmHandler {
-    pub fn new() -> (Self, Receiver<SwarmCommand>) {
+    pub fn new(
+        braid_arc: Arc<tokio::sync::RwLock<Braid>>,
+        db_command_sender: tokio::sync::mpsc::Sender<BraidpoolDBTypes>,
+    ) -> (Self, Receiver<SwarmCommand>) {
         let (swarm_stratum_bridge_tx, swarm_stratum_bridge_rx) =
             mpsc::channel::<SwarmCommand>(1024);
         (
             Self {
                 command_sender: swarm_stratum_bridge_tx,
+                braid_arc: Arc::clone(&braid_arc),
+                db_command_sender,
             },
             swarm_stratum_bridge_rx,
         )
@@ -192,30 +267,51 @@ impl SwarmHandler {
     pub async fn propagate_valid_bead(
         &mut self,
         candidate_block: bitcoin::Block,
-        extranonce_2_raw_value: i32,
+        extranonce_2_raw_value: u32,
         downstream_client_ip: &str,
         job_sent_timestamp: u32,
         downstream_payout_addr: &str,
+        //TODO: Will be used as seperate entity after altering `uncommitted_metadata`
+        extranonce_1_raw_value: u32,
     ) -> Result<(), StratumErrors> {
         let (candidate_block_header, candidate_block_transactions) = candidate_block.into_parts();
+        let ids: Vec<Txid> = candidate_block_transactions
+            .iter()
+            .map(|tx| tx.compute_txid())
+            .collect();
+        let transaction_ids: Vec<Txid> = Vec::from(ids);
         log::info!("Received command for broadcasting bead via floodsub");
         //TODO:Currently temprorary placeholder will be replaced in upcoming PRs
         let public_key = "020202020202020202020202020202020202020202020202020202020202020202"
             .parse::<bitcoin::PublicKey>()
             .unwrap();
-        let time_hash_set = TimeVec(Vec::new());
-        let parent_hash_set: HashSet<BlockHash> = HashSet::new();
+        let mut time_hash_set = TimeVec(Vec::new());
+        let mut parent_hash_set: HashSet<BlockHash> = HashSet::new();
+        let mut braid_data = self.braid_arc.write().await;
+        let tips_index = &braid_data.tips;
+        //Committing parents data in bead
+        for tip_bead in tips_index {
+            let current_tip_bead = braid_data.beads.get(*tip_bead).unwrap();
+            parent_hash_set.insert(current_tip_bead.block_header.block_hash());
+            time_hash_set
+                .0
+                .push(current_tip_bead.committed_metadata.start_timestamp);
+        }
+        log::info!(
+            "Current tip indices before new insertion - {:?}",
+            tips_index
+        );
         //TODO:This will be replaced via the allotted `WeakShareDifficulty` after Difficulty adjustment
-        let weak_target = CompactTarget::from_consensus(32);
+        let weak_target = CompactTarget::from_unprefixed_hex("1d00ffff").unwrap();
         //Mindiff
-        let min_target = CompactTarget::from_consensus(1);
+        let min_target = CompactTarget::from_unprefixed_hex("1d00ffff").unwrap();
         //Job sent time before downstream starts mining
         let job_notification_time_val =
             bitcoin::blockdata::locktime::absolute::Time::from_consensus(job_sent_timestamp)
                 .unwrap();
         let candidate_block_bead_committed_metadata = CommittedMetadata {
             comm_pub_key: public_key,
-            transactions: candidate_block_transactions,
+            transaction_ids: TxIdVec(transaction_ids),
             parents: parent_hash_set,
             parent_bead_timestamps: time_hash_set,
             payout_address: downstream_payout_addr.to_string(),
@@ -248,13 +344,32 @@ impl SwarmHandler {
                 unix_timestamp,
             )
             .unwrap(),
-            extra_nonce: extranonce_2_raw_value,
+            extra_nonce_1: extranonce_1_raw_value,
+            extra_nonce_2: extranonce_2_raw_value,
             signature: sig,
         };
         let weak_share = Bead {
             committed_metadata: candidate_block_bead_committed_metadata,
             block_header: candidate_block_header,
             uncommitted_metadata: candidate_block_bead_uncommitted_metadata,
+        };
+        let status = braid_data.extend(&weak_share);
+        log::info!("Bead extended successfully - {:?}", status);
+        let _db_insertion_command = match self
+            .db_command_sender
+            .send(BraidpoolDBTypes::InsertTupleTypes {
+                query: db::InsertTupleTypes::InsertBeadSequentially {
+                    bead_to_insert: weak_share.clone(),
+                },
+            })
+            .await
+        {
+            Ok(_) => {
+                log::info!("Bead insertion query sent");
+            }
+            Err(error) => {
+                log::info!("{:?}", error);
+            }
         };
         let serialized_weak_share_bytes = bitcoin::consensus::serialize(&weak_share);
         //After validation of the candidate block constructed by the downstream node sending it to swarm for further propogation
