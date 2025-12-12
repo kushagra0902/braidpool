@@ -3,8 +3,6 @@ use crate::bead::Bead;
 use crate::braid;
 use crate::braid::AddBeadStatus;
 use crate::braid::Braid;
-#[cfg(test)]
-use crate::db::db_handlers::DB_CHANNEL_CAPACITY;
 use crate::error::BraidRPCError;
 #[cfg(test)]
 use crate::utils::create_test_bead;
@@ -323,9 +321,7 @@ pub async fn run_rpc_server(
 pub async fn test_extend_rpc() {
     let test_bead1 = create_test_bead(1, None);
     let genesis_beads = vec![test_bead1.clone()];
-    let (db_handler_tx, _db_handler_rx) = tokio::sync::mpsc::channel(DB_CHANNEL_CAPACITY);
-    let braid: Arc<RwLock<braid::Braid>> =
-        Arc::new(RwLock::new(braid::Braid::new(genesis_beads, db_handler_tx)));
+    let braid: Arc<RwLock<braid::Braid>> = Arc::new(RwLock::new(braid::Braid::new(genesis_beads)));
 
     let server_addr = "127.0.0.1:6682";
     let _ = run_rpc_server(Arc::clone(&braid), server_addr)
@@ -358,10 +354,8 @@ pub async fn test_extend_rpc() {
 pub async fn test_same_bead_extend() {
     let test_bead1 = create_test_bead(1, None);
     let genesis_beads = vec![test_bead1.clone()];
-    let (db_handler_tx, _db_handler_rx) = tokio::sync::mpsc::channel(DB_CHANNEL_CAPACITY);
 
-    let braid: Arc<RwLock<braid::Braid>> =
-        Arc::new(RwLock::new(braid::Braid::new(genesis_beads, db_handler_tx)));
+    let braid: Arc<RwLock<braid::Braid>> = Arc::new(RwLock::new(braid::Braid::new(genesis_beads)));
 
     //Initializing the test server
     let rpc_middleware =
@@ -405,10 +399,8 @@ pub async fn test_cohort_count_rpc() {
     let test_bead_4 = create_test_bead(2, Some(test_bead_3.block_header.block_hash()));
 
     let genesis_beads = vec![test_bead_1.clone()];
-    let (db_handler_tx, _db_handler_rx) = tokio::sync::mpsc::channel(DB_CHANNEL_CAPACITY);
 
-    let braid: Arc<RwLock<braid::Braid>> =
-        Arc::new(RwLock::new(braid::Braid::new(genesis_beads, db_handler_tx)));
+    let braid: Arc<RwLock<braid::Braid>> = Arc::new(RwLock::new(braid::Braid::new(genesis_beads)));
     //Initializing the test server
     let rpc_middleware =
         jsonrpsee::server::middleware::rpc::RpcServiceBuilder::new().layer_fn(LoggingMiddleware);
