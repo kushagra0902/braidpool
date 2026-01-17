@@ -1,4 +1,5 @@
-use crate::bead::{Bead, BeadHash};
+use crate::bead::Bead;
+use crate::utils::BeadHash;
 #[cfg(test)]
 use crate::braid;
 use crate::braid::AddBeadStatus;
@@ -201,11 +202,11 @@ impl RpcServer for RpcServerImpl {
 
         match success_status {
             AddBeadStatus::BeadAdded => Ok("Bead added successfully".to_string()),
-            AddBeadStatus::DuplicateBead => Ok("Bead already exists".to_string()),
+            AddBeadStatus::DuplicateBead | AddBeadStatus::DagAlreadyContainsBead => Ok("Bead already exists".to_string()),
             AddBeadStatus::InvalidBead => {
                 Err(ErrorObjectOwned::owned(4, "Invalid bead", None::<()>))
             }
-            AddBeadStatus::ParentsMissing => Ok("Bead queued, waiting for parents".to_string()),
+            AddBeadStatus::ParentsMissing | AddBeadStatus::ParentsNotYetReceived => Ok("Bead queued, waiting for parents".to_string()),
         }
     }
 
