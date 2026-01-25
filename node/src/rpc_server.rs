@@ -1,5 +1,4 @@
 use crate::bead::Bead;
-use crate::utils::BeadHash;
 #[cfg(test)]
 use crate::braid;
 use crate::braid::AddBeadStatus;
@@ -7,6 +6,7 @@ use crate::braid::Braid;
 use crate::error::BraidRPCError;
 #[cfg(test)]
 use crate::utils::create_test_bead;
+use crate::utils::BeadHash;
 use clap::Subcommand;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::core::client::ClientT;
@@ -202,11 +202,15 @@ impl RpcServer for RpcServerImpl {
 
         match success_status {
             AddBeadStatus::BeadAdded => Ok("Bead added successfully".to_string()),
-            AddBeadStatus::DuplicateBead | AddBeadStatus::DagAlreadyContainsBead => Ok("Bead already exists".to_string()),
+            AddBeadStatus::DuplicateBead | AddBeadStatus::DagAlreadyContainsBead => {
+                Ok("Bead already exists".to_string())
+            }
             AddBeadStatus::InvalidBead => {
                 Err(ErrorObjectOwned::owned(4, "Invalid bead", None::<()>))
             }
-            AddBeadStatus::ParentsMissing | AddBeadStatus::ParentsNotYetReceived => Ok("Bead queued, waiting for parents".to_string()),
+            AddBeadStatus::ParentsMissing | AddBeadStatus::ParentsNotYetReceived => {
+                Ok("Bead queued, waiting for parents".to_string())
+            }
         }
     }
 
