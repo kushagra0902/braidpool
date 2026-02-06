@@ -39,3 +39,23 @@ export interface Miner {
   primary_pool: string;
   pools: any[];
 }
+export type MinerAnalyticsPoint = {
+  timestamp: number;
+  hashrate: number;
+  expected: number;
+  efficiency: number;
+  temperature: number;
+  vrTemperature: number;
+};
+export type HistoryPoint = {
+  timestamp: number;
+  totalHashrate: number;
+  expectedHashrate: number;
+  efficiency: number;
+  temperature: number;
+  vrTemperature: number;
+};
+
+export type AnalyticsChartsProps = {
+  fleetHistory: HistoryPoint[];
+};
