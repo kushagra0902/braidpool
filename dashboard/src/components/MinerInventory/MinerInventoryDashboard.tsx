@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Miner, HistoryPoint, MinerAnalyticsPoint } from './Types';
+import { Miner, HistoryPoint, MinerAnalyticsPoint, Alert } from './Types';
 import { API_URLS } from '../../URLs';
 import AnalyticsCharts from './AnalyticsCharts';
 import colors from '../../theme/colors';
@@ -111,12 +111,15 @@ const MinerInventoryDashboard = () => {
     return 'online';
   };
 
-  const countAlerts = (data: any): number => {
-    let alerts = 0;
-    if ((data.temperature || 0) > 80) alerts++;
-    if ((data.vr_temperature || 0) > 85) alerts++;
-    if (!data.is_mining) alerts++;
-    if (data.errors && data.errors.length > 0) alerts += data.errors.length;
+  const getAlerts = (miner: Miner): Alert[] => {
+    if (miner.status === 'offline') return [];
+    const alerts: Alert[] = [];
+    if (miner.temperature > 100) {
+      alerts.push({ message: `ASIC Temp High `, severity: 'critical' });
+    }
+    if (miner.vr_temperature > 105) {
+      alerts.push({ message: `VR Temp High `, severity: 'critical' });
+    }
     return alerts;
   };
 
@@ -151,7 +154,7 @@ const MinerInventoryDashboard = () => {
         is_mining: data.is_mining || false,
         uptime: data.uptime || 0,
         errors: data.errors || [],
-        alerts: countAlerts(data),
+        alerts: 0,
         lastSeen: new Date().toLocaleTimeString(),
 
         hashrate_current: data.hashrate_current || 0,
@@ -200,8 +203,9 @@ const MinerInventoryDashboard = () => {
       return {
         ...orig,
         status: 'offline' as const,
+        is_mining: false,
         lastSeen: new Date().toLocaleTimeString(),
-        alerts: (orig.alerts || 0) + 1,
+        alerts: 0,
         hashrate_current: 0,
         hashrate_avg: 0,
         expected_hashrate: 0,
@@ -286,6 +290,16 @@ const MinerInventoryDashboard = () => {
           totalMiners) *
         1000
       : 0;
+
+  const allAlerts = miners.flatMap((m) => getAlerts(m));
+  const criticalAlerts = allAlerts.filter(
+    (a) => a.severity === 'critical'
+  ).length;
+  const warningAlerts = allAlerts.filter(
+    (a) => a.severity === 'warning'
+  ).length;
+  const totalAlerts = criticalAlerts + warningAlerts;
+  const hasAlerts = totalAlerts > 0;
 
   const displayedMiners =
     !searchQuery || searchQuery.length === 0
@@ -523,12 +537,15 @@ const MinerInventoryDashboard = () => {
                   className="min-w-[800px]  rounded-2xl bg-[#1e1e1e] border border-white/10 shadow-md p-4"
                   style={{ borderColor: colors.cardAccentSecondary }}
                 >
-                  <div className="grid grid-cols-7 gap-4 px-4 py-3 text-xs uppercase tracking-wide text-gray-400 border-b border-gray-800/60">
+                  <div
+                    className={`grid ${hasAlerts ? 'grid-cols-8' : 'grid-cols-7'} gap-4 px-4 py-3 text-xs uppercase tracking-wide text-gray-400 border-b border-gray-800/60`}
+                  >
                     <div>Model</div>
                     <div>Hashrate</div>
                     <div>Efficiency</div>
                     <div>Power</div>
                     <div>Status</div>
+                    {hasAlerts && <div>Alerts</div>}
                     <div>Temp</div>
                     <div>Details</div>
                   </div>
@@ -537,7 +554,7 @@ const MinerInventoryDashboard = () => {
                     {sortedDisplayedMiners.map((miner) => (
                       <div
                         key={miner.id}
-                        className="grid grid-cols-7 gap-4 px-4 py-3 text-sm text-gray-200 items-center"
+                        className={`grid ${hasAlerts ? 'grid-cols-8' : 'grid-cols-7'} gap-4 px-4 py-3 text-sm text-gray-200 items-center`}
                       >
                         <div className="font-medium text-white truncate">
                           {miner.hostname ||
@@ -560,23 +577,47 @@ const MinerInventoryDashboard = () => {
                             {miner.status.toUpperCase()}
                           </span>
                         </div>
+                        {hasAlerts &&
+                          (() => {
+                            const alerts = getAlerts(miner);
+                            if (alerts.length === 0) return null;
+
+                            return (
+                              <div className="flex flex-col gap-1 text-sm text-red-400">
+                                {alerts.map((alert, idx) => {
+                                  return (
+                                    <span key={idx} title={alert.message}>
+                                      {alert.message}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
+
                         <div className="text-gray-300 whitespace-nowrap">
                           {miner.temperature || 0}°C /{' '}
                           {miner.vr_temperature || 0}°C
                         </div>
                         <div className="text-gray-300 whitespace-nowrap">
-                          {minerHistory[miner.id] &&
-                          minerHistory[miner.id].length > 1 ? (
-                            <Link
-                              to="#"
-                              onClick={(e) => e.preventDefault()}
-                              className=" inline-flex px-3 py-1 text-xs rounded border border-gray-600  bg-gray-800 hover:bg-gray-700 "
-                            >
-                              Details
-                            </Link>
-                          ) : (
-                            <span className="text-xs text-gray-500">-</span>
-                          )}
+                          <Link
+                            to="#"
+                            onClick={(e) => e.preventDefault()}
+                            className={`inline-flex px-3 py-1 text-xs rounded border ${
+                              minerHistory[miner.id] &&
+                              minerHistory[miner.id].length > 1
+                                ? 'border-gray-600 bg-gray-800 hover:bg-gray-700 cursor-pointer'
+                                : 'border-gray-700 bg-gray-900 text-gray-500 cursor-not-allowed'
+                            }`}
+                            title={
+                              minerHistory[miner.id] &&
+                              minerHistory[miner.id].length > 1
+                                ? 'View detailed analytics'
+                                : 'Collecting data... Please wait'
+                            }
+                          >
+                            Details
+                          </Link>
                         </div>
                       </div>
                     ))}
