@@ -28,6 +28,9 @@ const MinerInventoryDashboard = () => {
   const [minerHistory, setMinerHistory] = useState<
     Record<string, MinerAnalyticsPoint[]>
   >({});
+  const [expandedAlerts, setExpandedAlerts] = useState<Record<string, boolean>>(
+    {}
+  );
 
   useEffect(() => {
     minersRef.current = miners;
@@ -114,11 +117,23 @@ const MinerInventoryDashboard = () => {
   const getAlerts = (miner: Miner): Alert[] => {
     if (miner.status === 'offline') return [];
     const alerts: Alert[] = [];
+    if (miner.hashrate_current <= 0) {
+      alerts.push({ message: `Hashrate is zero`, severity: 'warning' });
+    }
     if (miner.temperature > 100) {
       alerts.push({ message: `ASIC Temp High `, severity: 'critical' });
     }
     if (miner.vr_temperature > 105) {
       alerts.push({ message: `VR Temp High `, severity: 'critical' });
+    }
+    if (miner.voltage && miner.voltage < 4) {
+      alerts.push({ message: `Voltage Low`, severity: 'warning' });
+    }
+    if (
+      miner.fan_speeds !== undefined &&
+      miner.fan_speeds.some((s) => s < 1000)
+    ) {
+      alerts.push({ message: `Fan Speed Low`, severity: 'warning' });
     }
     return alerts;
   };
@@ -580,17 +595,46 @@ const MinerInventoryDashboard = () => {
                         {hasAlerts &&
                           (() => {
                             const alerts = getAlerts(miner);
-                            if (alerts.length === 0) return null;
+                            if (alerts.length === 0) return <div></div>;
 
+                            const isExpanded =
+                              expandedAlerts[miner.id] || false;
+                            const firstAlert = alerts[0];
+                            const remainingCount = alerts.length - 1;
                             return (
-                              <div className="flex flex-col gap-1 text-sm text-red-400">
-                                {alerts.map((alert, idx) => {
-                                  return (
-                                    <span key={idx} title={alert.message}>
-                                      {alert.message}
+                              <div className="flex flex-col gap-1.5">
+                                <div
+                                  className="cursor-pointer select-none"
+                                  onClick={() =>
+                                    setExpandedAlerts((prev) => ({
+                                      ...prev,
+                                      [miner.id]: !prev[miner.id],
+                                    }))
+                                  }
+                                >
+                                  <div
+                                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors
+                                    bg-gray-800/60 border-gray-700/40 text-amber-300 hover:bg-gray-800/80"
+                                  >
+                                    <span>{firstAlert.message}</span>
+                                    {remainingCount > 0 && (
+                                      <span className="px-1.5 py-0.5 rounded bg-gray-700/50 text-gray-400 text-[10px]">
+                                        +{remainingCount}
+                                      </span>
+                                    )}
+                                    <span className="ml-auto text-gray-500 text-[10px]">
+                                      {isExpanded ? '▲' : '▼'}
                                     </span>
-                                  );
-                                })}
+                                  </div>
+                                </div>
+
+                                {isExpanded && alerts.length > 1 && (
+                                  <div className="flex flex-col gap-1 pl-2 border-l-2 text-amber-300 border-gray-700/50">
+                                    {alerts.slice(1).map((alert, idx) => (
+                                      <div key={idx}>{alert.message}</div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             );
                           })()}
