@@ -52,9 +52,9 @@ const AnalyticsCharts = ({ fleetHistory }: AnalyticsChartsProps) => {
             <button
               type="button"
               onClick={() => setActiveView('hashrate')}
-              className={`px-3 py-1 rounded border transition ${
+              className={`px-3 py-1 rounded border transition cursor-pointer ${
                 activeView === 'hashrate'
-                  ? 'border-blue-400 text-white bg-gray-700'
+                  ? ' text-white bg-gray-800 hover:bg-gray-700'
                   : 'border-gray-600 text-gray-400'
               }`}
             >
@@ -63,9 +63,9 @@ const AnalyticsCharts = ({ fleetHistory }: AnalyticsChartsProps) => {
             <button
               type="button"
               onClick={() => setActiveView('efficiency')}
-              className={`px-3 py-1 rounded border transition ${
+              className={`px-3 py-1 rounded border transition cursor-pointer${
                 activeView === 'efficiency'
-                  ? 'border-amber-400 text-white bg-gray-700'
+                  ? ' text-white bg-gray-800 hover:bg-gray-700 '
                   : 'border-gray-600 text-gray-400'
               }`}
             >
@@ -74,9 +74,9 @@ const AnalyticsCharts = ({ fleetHistory }: AnalyticsChartsProps) => {
             <button
               type="button"
               onClick={() => setActiveView('temperature')}
-              className={`px-3 py-1 rounded border transition ${
+              className={`px-3 py-1 rounded border transition cursor-pointer ${
                 activeView === 'temperature'
-                  ? 'border-rose-400 text-white bg-gray-700'
+                  ? ' text-white bg-gray-800 hover:bg-gray-700 '
                   : 'border-gray-600 text-gray-400'
               }`}
             >
