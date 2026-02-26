@@ -143,10 +143,10 @@ const MinerInventoryDashboard = () => {
       alerts.push({ message: `Hashrate is zero`, severity: 'warning' });
     }
     if (miner.temperature > 100) {
-      alerts.push({ message: `ASIC Temp High `, severity: 'critical' });
+      alerts.push({ message: `ASIC Temp High`, severity: 'critical' });
     }
     if (miner.vr_temperature > 105) {
-      alerts.push({ message: `VR Temp High `, severity: 'critical' });
+      alerts.push({ message: `VR Temp High`, severity: 'critical' });
     }
     if (miner.voltage && miner.voltage < 4) {
       alerts.push({ message: `Voltage Low`, severity: 'warning' });
