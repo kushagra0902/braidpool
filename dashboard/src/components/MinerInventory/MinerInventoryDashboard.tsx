@@ -311,20 +311,24 @@ const MinerInventoryDashboard = () => {
   const warningMiners = miners.filter((m) => m.status === 'warning').length;
   const offlineMiners = miners.filter((m) => m.status === 'offline').length;
   const totalHashrate = miners.reduce(
-    (sum, m) => (m.status === 'online' ? sum + (m.hashrate_current || 0) : sum),
+    (sum, m) =>
+      m.status === 'online' || m.status === 'warning'
+        ? sum + (m.hashrate_current || 0)
+        : sum,
     0
   );
   const totalPower = miners.reduce(
     (sum, m) => (m.status === 'online' ? sum + (m.power_usage || 0) : sum),
     0
   );
+  const activeMiners = miners.filter(
+    (m) => m.status === 'online' || m.status === 'warning'
+  );
+
   const avgEfficiency =
-    totalMiners > 0
-      ? (miners.reduce(
-          (sum, m) => (m.status === 'online' ? sum + (m.efficiency || 0) : sum),
-          0
-        ) /
-          totalMiners) *
+    activeMiners.length > 0
+      ? (activeMiners.reduce((sum, m) => sum + (m.efficiency || 0), 0) /
+          activeMiners.length) *
         1000
       : 0;
 
@@ -595,8 +599,11 @@ const MinerInventoryDashboard = () => {
                       >
                         <div className="font-medium text-white truncate">
                           {miner.hostname ||
-                            `${miner.make} ${miner.model}` ||
-                            'Unknown'}
+                            (miner.make || miner.model
+                              ? [miner.make, miner.model]
+                                  .filter(Boolean)
+                                  .join(' ')
+                              : 'Unknown')}
                         </div>
                         <div className="whitespace-nowrap">
                           {(miner.hashrate_current || 0).toFixed(3)} TH/s
