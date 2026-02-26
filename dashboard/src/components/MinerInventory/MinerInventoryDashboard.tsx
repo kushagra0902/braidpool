@@ -318,7 +318,10 @@ const MinerInventoryDashboard = () => {
     0
   );
   const totalPower = miners.reduce(
-    (sum, m) => (m.status === 'online' ? sum + (m.power_usage || 0) : sum),
+    (sum, m) =>
+      m.status === 'online' || m.status === 'warning'
+        ? sum + (m.power_usage || 0)
+        : sum,
     0
   );
   const activeMiners = miners.filter(
