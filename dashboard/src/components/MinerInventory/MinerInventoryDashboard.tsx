@@ -38,35 +38,57 @@ const MinerInventoryDashboard = () => {
 
   useEffect(() => {
     if (miners.length === 0) return;
-    const anyActive = miners.some((miner) => miner.status === 'online' || miner.status === 'warning');
+    const anyActive = miners.some(
+      (miner) => miner.status === 'online' || miner.status === 'warning'
+    );
     if (!anyActive) return;
 
     const timestamp = Date.now();
     const totalHashrateNow = miners.reduce(
       (sum, m) =>
-        (m.status === 'online' || m.status === 'warning') ? sum + (m.hashrate_current || 0) : sum,
+        m.status === 'online' || m.status === 'warning'
+          ? sum + (m.hashrate_current || 0)
+          : sum,
       0
     );
     const totalExpectedNow = miners.reduce(
       (sum, m) =>
-        (m.status === 'online' || m.status === 'warning') ? sum + (m.expected_hashrate || 0) : sum,
+        m.status === 'online' || m.status === 'warning'
+          ? sum + (m.expected_hashrate || 0)
+          : sum,
       0
     );
     const avgEfficiencyNow =
       miners.length > 0
-        ? (miners.reduce((sum, m) => (m.status === 'online' || m.status === 'warning') ? sum + (m.efficiency || 0) : sum, 0) /
+        ? (miners.reduce(
+            (sum, m) =>
+              m.status === 'online' || m.status === 'warning'
+                ? sum + (m.efficiency || 0)
+                : sum,
+            0
+          ) /
             miners.length) *
           1000
         : 0;
     const avgTempNow =
       miners.length > 0
-        ? miners.reduce((sum, m) => (m.status === 'online' || m.status === 'warning') ? sum + (m.temperature || 0) : sum, 0) /
-          miners.length
+        ? miners.reduce(
+            (sum, m) =>
+              m.status === 'online' || m.status === 'warning'
+                ? sum + (m.temperature || 0)
+                : sum,
+            0
+          ) / miners.length
         : 0;
     const avgVrTempNow =
       miners.length > 0
-        ? miners.reduce((sum, m) => (m.status === 'online' || m.status === 'warning') ? sum + (m.vr_temperature || 0) : sum, 0) /
-          miners.length
+        ? miners.reduce(
+            (sum, m) =>
+              m.status === 'online' || m.status === 'warning'
+                ? sum + (m.vr_temperature || 0)
+                : sum,
+            0
+          ) / miners.length
         : 0;
 
     setFleetHistory((prev) => {
@@ -103,7 +125,7 @@ const MinerInventoryDashboard = () => {
   }, [miners]);
 
   // Helper functions
-  const determineStatus = (data: any): 'online' | 'warning' | 'offline' => {  
+  const determineStatus = (data: any): 'online' | 'warning' | 'offline' => {
     if (!data.is_mining || (data.hashrate_current || 0) === 0) return 'offline';
     if (
       (data.temperature || 0) > 80 ||
