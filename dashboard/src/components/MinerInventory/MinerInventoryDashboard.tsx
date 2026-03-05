@@ -58,37 +58,25 @@ const MinerInventoryDashboard = () => {
           : sum,
       0
     );
+    const activeMiners = miners.filter(
+      (m) => m.status === 'online' || m.status === 'warning'
+    );
+
     const avgEfficiencyNow =
-      miners.length > 0
-        ? (miners.reduce(
-            (sum, m) =>
-              m.status === 'online' || m.status === 'warning'
-                ? sum + (m.efficiency || 0)
-                : sum,
-            0
-          ) /
-            miners.length) *
+      activeMiners.length > 0
+        ? (activeMiners.reduce((sum, m) => sum + (m.efficiency || 0), 0) /
+            activeMiners.length) *
           1000
         : 0;
     const avgTempNow =
-      miners.length > 0
-        ? miners.reduce(
-            (sum, m) =>
-              m.status === 'online' || m.status === 'warning'
-                ? sum + (m.temperature || 0)
-                : sum,
-            0
-          ) / miners.length
+      activeMiners.length > 0
+        ? activeMiners.reduce((sum, m) => sum + (m.temperature || 0), 0) /
+          activeMiners.length
         : 0;
     const avgVrTempNow =
-      miners.length > 0
-        ? miners.reduce(
-            (sum, m) =>
-              m.status === 'online' || m.status === 'warning'
-                ? sum + (m.vr_temperature || 0)
-                : sum,
-            0
-          ) / miners.length
+      activeMiners.length > 0
+        ? activeMiners.reduce((sum, m) => sum + (m.vr_temperature || 0), 0) /
+          activeMiners.length
         : 0;
 
     setFleetHistory((prev) => {
