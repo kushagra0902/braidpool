@@ -244,7 +244,11 @@ const MinerInventoryDashboard = () => {
     });
 
     setMiners(updatedMiners);
-    if (updatedMiners.some((miner) => miner.status === 'online')) {
+    if (
+      updatedMiners.some(
+        (miner) => miner.status === 'online' || miner.status === 'warning'
+      )
+    ) {
       setLastUpdate(new Date());
     }
     setLoading(false);
