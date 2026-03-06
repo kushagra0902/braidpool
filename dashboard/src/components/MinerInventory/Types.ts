@@ -59,7 +59,7 @@ export type HistoryPoint = {
 export type AnalyticsChartsProps = {
   fleetHistory: HistoryPoint[];
 };
-export type Alert = {
+export type MinerAlert = {
   message: string;
   severity: 'info' | 'warning' | 'critical';
 };
