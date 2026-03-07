@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Miner, HistoryPoint, MinerAnalyticsPoint, Alert } from './Types';
+import { Miner, HistoryPoint, MinerAnalyticsPoint, MinerAlert as Alert } from './Types';
 import { API_URLS } from '../../URLs';
 import AnalyticsCharts from './AnalyticsCharts';
 import colors from '../../theme/colors';
