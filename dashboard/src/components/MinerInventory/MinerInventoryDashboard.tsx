@@ -127,7 +127,7 @@ const MinerInventoryDashboard = () => {
   const getAlerts = (miner: Miner): Alert[] => {
     if (miner.status === 'offline') return [];
     const alerts: Alert[] = [];
-    if (miner.hashrate_current <= 0) {
+    if ((miner.hashrate_current ?? 0) <= 0) {
       alerts.push({ message: `Hashrate is zero`, severity: 'warning' });
     }
     if (miner.temperature > 100) {
