@@ -1,11 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { Miner, HistoryPoint, MinerAnalyticsPoint, MinerAlert as Alert } from './Types';
+import {
+  Miner,
+  HistoryPoint,
+  MinerAnalyticsPoint,
+  MinerAlert as Alert,
+} from './Types';
 import { API_URLS } from '../../URLs';
 import AnalyticsCharts from './AnalyticsCharts';
 import MinerTable from './MinerTable';
 import MinerDashboardHeader from './MinerDashboardHeader';
 import MinerControls from './MinerControls';
-import  {HISTORY_POINTS , THRESHOLDS } from './Constant';
+import { HISTORY_POINTS, THRESHOLDS } from './Constant';
 
 const MAX_HISTORY_POINTS = HISTORY_POINTS;
 
@@ -136,16 +141,16 @@ const MinerInventoryDashboard = () => {
       alerts.push({ message: `ASIC Temp High` });
     }
     if (miner.vr_temperature > THRESHOLDS.VR_TEMP_CRITICAL) {
-      alerts.push({ message: `VR Temp High`});
+      alerts.push({ message: `VR Temp High` });
     }
     if (miner.voltage && miner.voltage < THRESHOLDS.VOLTAGE_LOW) {
-      alerts.push({ message: `Voltage Low`});
+      alerts.push({ message: `Voltage Low` });
     }
     if (
       miner.fan_speeds !== undefined &&
       miner.fan_speeds.some((s) => s < THRESHOLDS.FAN_SPEED_LOW)
     ) {
-      alerts.push({ message: `Fan Speed Low`, });
+      alerts.push({ message: `Fan Speed Low` });
     }
     return alerts;
   };
@@ -328,7 +333,6 @@ const MinerInventoryDashboard = () => {
           activeMiners.length) *
         1000
       : 0;
-
 
   const displayedMiners =
     !searchQuery || searchQuery.length === 0

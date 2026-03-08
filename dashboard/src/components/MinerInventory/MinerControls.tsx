@@ -30,7 +30,9 @@ const MinerControls: React.FC<MinerControlsProps> = ({
     </div>
     <div className="ml-auto flex items-center gap-2 text-sm text-gray-400">
       <div>
-        {lastUpdate ? `Last update: ${lastUpdate.toLocaleString()}` : 'Never updated'}
+        {lastUpdate
+          ? `Last update: ${lastUpdate.toLocaleString()}`
+          : 'Never updated'}
       </div>
       <button
         onClick={refreshAllMiners}

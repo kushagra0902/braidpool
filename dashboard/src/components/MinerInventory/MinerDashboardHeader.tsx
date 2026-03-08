@@ -1,7 +1,6 @@
 import React from 'react';
 import { MinerDashboardHeaderProps } from './Types';
 
-
 const MinerDashboardHeader: React.FC<MinerDashboardHeaderProps> = ({
   totalMiners,
   totalHashrate,

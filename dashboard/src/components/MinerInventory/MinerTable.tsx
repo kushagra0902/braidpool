@@ -17,7 +17,7 @@ const MinerTable: React.FC<MinerTableProps> = ({
     <div className="w-full overflow-x-auto">
       <div
         className="min-w-[800px] rounded-2xl bg-[#1e1e1e] p-4 border border-white/10 shadow-md"
-         style={{ borderColor: colors.cardAccentSecondary }}
+        style={{ borderColor: colors.cardAccentSecondary }}
       >
         <div
           className={`grid ${hasAlerts ? 'grid-cols-8' : 'grid-cols-7'} gap-4 px-4 py-3 text-xs uppercase tracking-wide text-gray-400 border-b border-gray-800/60`}
@@ -75,9 +75,7 @@ const MinerTable: React.FC<MinerTableProps> = ({
                         }))
                       }
                     >
-                      <div
-                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors bg-gray-800/60 border-gray-700/40 text-amber-300 hover:bg-gray-800/80"
-                      >
+                      <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors bg-gray-800/60 border-gray-700/40 text-amber-300 hover:bg-gray-800/80">
                         <span>{firstAlert.message}</span>
                         {remainingCount > 0 && (
                           <span className="px-1.5 py-0.5 rounded bg-gray-700/50 text-gray-400 text-[10px]">
@@ -108,12 +106,14 @@ const MinerTable: React.FC<MinerTableProps> = ({
                     to="#"
                     onClick={(e) => e.preventDefault()}
                     className={`inline-flex px-3 py-1 text-xs rounded border ${
-                      minerHistory[miner.id] && minerHistory[miner.id].length > 1
+                      minerHistory[miner.id] &&
+                      minerHistory[miner.id].length > 1
                         ? 'border-gray-600 bg-gray-800 hover:bg-gray-700 cursor-pointer'
                         : 'border-gray-700 bg-gray-900 text-gray-500 cursor-not-allowed'
                     }`}
                     title={
-                      minerHistory[miner.id] && minerHistory[miner.id].length > 1
+                      minerHistory[miner.id] &&
+                      minerHistory[miner.id].length > 1
                         ? 'View detailed analytics'
                         : 'Collecting data... Please wait'
                     }
