@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
 import { Miner, HistoryPoint, MinerAnalyticsPoint, MinerAlert as Alert } from './Types';
 import { API_URLS } from '../../URLs';
 import AnalyticsCharts from './AnalyticsCharts';
-import colors from '../../theme/colors';
+import MinerTable from './MinerTable';
+import MinerDashboardHeader from './MinerDashboardHeader';
+import MinerControls from './MinerControls';
+import  {HISTORY_POINTS , THRESHOLDS } from './Constant';
 
-const MAX_HISTORY_POINTS = 20;
+const MAX_HISTORY_POINTS = HISTORY_POINTS;
 
 const MinerInventoryDashboard = () => {
   const [miners, setMiners] = useState<Miner[]>([]);
@@ -127,23 +129,23 @@ const MinerInventoryDashboard = () => {
   const getAlerts = (miner: Miner): Alert[] => {
     if (miner.status === 'offline') return [];
     const alerts: Alert[] = [];
-    if ((miner.hashrate_current ?? 0) <= 0) {
-      alerts.push({ message: `Hashrate is zero`, severity: 'warning' });
+    if ((miner.hashrate_current ?? 0) <= THRESHOLDS.LOW_hASHRATE) {
+      alerts.push({ message: `Hashrate is zero` });
     }
-    if (miner.temperature > 100) {
-      alerts.push({ message: `ASIC Temp High`, severity: 'critical' });
+    if (miner.temperature > THRESHOLDS.ASIC_TEMP_CRITICAL) {
+      alerts.push({ message: `ASIC Temp High` });
     }
-    if (miner.vr_temperature > 105) {
-      alerts.push({ message: `VR Temp High`, severity: 'critical' });
+    if (miner.vr_temperature > THRESHOLDS.VR_TEMP_CRITICAL) {
+      alerts.push({ message: `VR Temp High`});
     }
-    if (miner.voltage && miner.voltage < 4) {
-      alerts.push({ message: `Voltage Low`, severity: 'warning' });
+    if (miner.voltage && miner.voltage < THRESHOLDS.VOLTAGE_LOW) {
+      alerts.push({ message: `Voltage Low`});
     }
     if (
       miner.fan_speeds !== undefined &&
-      miner.fan_speeds.some((s) => s < 1000)
+      miner.fan_speeds.some((s) => s < THRESHOLDS.FAN_SPEED_LOW)
     ) {
-      alerts.push({ message: `Fan Speed Low`, severity: 'warning' });
+      alerts.push({ message: `Fan Speed Low`, });
     }
     return alerts;
   };
@@ -327,15 +329,6 @@ const MinerInventoryDashboard = () => {
         1000
       : 0;
 
-  const allAlerts = miners.flatMap((m) => getAlerts(m));
-  const criticalAlerts = allAlerts.filter(
-    (a) => a.severity === 'critical'
-  ).length;
-  const warningAlerts = allAlerts.filter(
-    (a) => a.severity === 'warning'
-  ).length;
-  const totalAlerts = criticalAlerts + warningAlerts;
-  const hasAlerts = totalAlerts > 0;
 
   const displayedMiners =
     !searchQuery || searchQuery.length === 0
@@ -387,7 +380,7 @@ const MinerInventoryDashboard = () => {
     <div className="min-h-screen w-full px-4 py-6 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-4">
+          <h1 className="text-3xl font-bold text-white mb-12">
             Mining Dashboard
           </h1>
 
@@ -398,63 +391,21 @@ const MinerInventoryDashboard = () => {
             </div>
           )}
 
-          <div className="mt-6 relative flex items-center w-full gap-2 mb-8">
-            <div className="absolute left-1/2 transform -translate-x-1/2 flex gap-2">
-              <input
-                type="text"
-                value={newMinerIP}
-                onChange={(e) => setNewMinerIP(e.target.value)}
-                placeholder="Enter Miner IP"
-                aria-label="Miner IP"
-                className="w-64 px-3 py-2 text-sm text-center border border-gray-600 bg-gray-800 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-500"
-                onKeyDown={(e) => e.key === 'Enter' && addMinerByIP()}
-              />
-              <button
-                onClick={addMinerByIP}
-                disabled={loading}
-                className="px-4 py-2 text-sm text-white rounded bg-gray-800 cursor-pointer"
-              >
-                {loading ? 'Adding...' : 'Add Miner'}
-              </button>
-            </div>
+          <MinerControls
+            newMinerIP={newMinerIP}
+            setNewMinerIP={setNewMinerIP}
+            addMinerByIP={addMinerByIP}
+            loading={loading}
+            lastUpdate={lastUpdate}
+            refreshAllMiners={refreshAllMiners}
+          />
 
-            <div className="ml-auto flex items-center gap-2 text-sm text-gray-400">
-              <div>
-                {lastUpdate
-                  ? `Last update: ${lastUpdate.toLocaleString()}`
-                  : 'Never updated'}
-              </div>
-              <button
-                onClick={refreshAllMiners}
-                className="px-3 py-1 text-sm rounded border border-gray-600 text-white bg-gray-800 hover:bg-gray-700 cursor-pointer"
-              >
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 text-sm max-w-4xl mx-auto">
-            <div className="px-2 py-1 rounded-md border border-gray-600  text-gray-400 text-center">
-              <div className="font-medium text-sm">Total Miners</div>
-              <div className="text-sm text-white mt-1">{totalMiners}</div>
-            </div>
-            <div className="px-2 py-1 rounded-md border border-gray-600 text-gray-400 text-center">
-              <div className="font-medium text-sm">Total Hashrate</div>
-              <div className="text-sm text-white mt-1">
-                {totalHashrate.toFixed(3)} TH/s
-              </div>
-            </div>
-            <div className="px-2 py-1 rounded-md border border-gray-600 text-gray-400 text-center">
-              <div className="font-medium text-sm">Total Power</div>
-              <div className="text-sm text-white mt-1">{totalPower}W</div>
-            </div>
-            <div className="px-2 py-1 rounded-md border border-gray-600 text-gray-400 text-center">
-              <div className="font-medium text-sm">Avg Efficiency</div>
-              <div className="text-sm text-white mt-1">
-                {avgEfficiency.toFixed(1)} W/TH
-              </div>
-            </div>
-          </div>
+          <MinerDashboardHeader
+            totalMiners={totalMiners}
+            totalHashrate={totalHashrate}
+            totalPower={totalPower}
+            avgEfficiency={avgEfficiency}
+          />
         </div>
 
         {miners.length > 0 && (
@@ -479,7 +430,7 @@ const MinerInventoryDashboard = () => {
                     setStatusFilter((s) => (s === 'online' ? 'all' : 'online'))
                   }
                   className={
-                    'px-4 py-2 rounded-md border transition text-sm ' +
+                    'px-4 py-2 rounded-md border transition text-sm  cursor-pointer ' +
                     (statusFilter === 'online'
                       ? 'border-blue-400 text-white bg-gray-700'
                       : 'border-gray-600 text-gray-400 hover:bg-gray-800')
@@ -494,7 +445,7 @@ const MinerInventoryDashboard = () => {
                     )
                   }
                   className={
-                    'px-4 py-2 rounded-md border transition text-sm ' +
+                    'px-4 py-2 rounded-md border transition text-sm  cursor-pointer ' +
                     (statusFilter === 'warning'
                       ? 'border-yellow-400 text-white bg-gray-700'
                       : 'border-gray-600 text-gray-400 hover:bg-gray-800')
@@ -509,7 +460,7 @@ const MinerInventoryDashboard = () => {
                     )
                   }
                   className={
-                    'px-4 py-2 rounded-md border transition text-sm ' +
+                    'px-4 py-2 rounded-md border transition text-sm   cursor-pointer ' +
                     (statusFilter === 'offline'
                       ? 'border-red-400 text-white bg-gray-700'
                       : 'border-gray-600 text-gray-400 hover:bg-gray-800')
@@ -568,130 +519,14 @@ const MinerInventoryDashboard = () => {
                 <p className="text-lg">No miners match your search</p>
               </div>
             ) : (
-              <div className="w-full overflow-x-auto">
-                <div
-                  className="min-w-[800px]  rounded-2xl bg-[#1e1e1e] border border-white/10 shadow-md p-4"
-                  style={{ borderColor: colors.cardAccentSecondary }}
-                >
-                  <div
-                    className={`grid ${hasAlerts ? 'grid-cols-8' : 'grid-cols-7'} gap-4 px-4 py-3 text-xs uppercase tracking-wide text-gray-400 border-b border-gray-800/60`}
-                  >
-                    <div>Model</div>
-                    <div>Hashrate</div>
-                    <div>Efficiency</div>
-                    <div>Power</div>
-                    <div>Status</div>
-                    {hasAlerts && <div>Alerts</div>}
-                    <div>Temp</div>
-                    <div>Details</div>
-                  </div>
-
-                  <div className="rounded-2xl   shadow-md p-4">
-                    {sortedDisplayedMiners.map((miner) => (
-                      <div
-                        key={miner.id}
-                        className={`grid ${hasAlerts ? 'grid-cols-8' : 'grid-cols-7'} gap-4 px-4 py-3 text-sm text-gray-200 items-center`}
-                      >
-                        <div className="font-medium text-white truncate">
-                          {miner.hostname ||
-                            (miner.make || miner.model
-                              ? [miner.make, miner.model]
-                                  .filter(Boolean)
-                                  .join(' ')
-                              : 'Unknown')}
-                        </div>
-                        <div className="whitespace-nowrap">
-                          {(miner.hashrate_current || 0).toFixed(3)} TH/s
-                        </div>
-                        <div className="whitespace-nowrap">
-                          {((miner.efficiency || 0) * 1000).toFixed(1)} W/TH
-                        </div>
-                        <div className="whitespace-nowrap">
-                          {miner.power_usage || 0} W
-                        </div>
-                        <div>
-                          <span
-                            className={`px-2 py-0.5 text-xs rounded border whitespace-nowrap ${statusStyles[miner.status]}`}
-                          >
-                            {miner.status.toUpperCase()}
-                          </span>
-                        </div>
-                        {hasAlerts &&
-                          (() => {
-                            const alerts = getAlerts(miner);
-                            if (alerts.length === 0) return <div></div>;
-
-                            const isExpanded =
-                              expandedAlerts[miner.id] || false;
-                            const firstAlert = alerts[0];
-                            const remainingCount = alerts.length - 1;
-                            return (
-                              <div className="flex flex-col gap-1.5">
-                                <div
-                                  className="cursor-pointer select-none"
-                                  onClick={() =>
-                                    setExpandedAlerts((prev) => ({
-                                      ...prev,
-                                      [miner.id]: !prev[miner.id],
-                                    }))
-                                  }
-                                >
-                                  <div
-                                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors
-                                    bg-gray-800/60 border-gray-700/40 text-amber-300 hover:bg-gray-800/80"
-                                  >
-                                    <span>{firstAlert.message}</span>
-                                    {remainingCount > 0 && (
-                                      <span className="px-1.5 py-0.5 rounded bg-gray-700/50 text-gray-400 text-[10px]">
-                                        +{remainingCount}
-                                      </span>
-                                    )}
-                                    <span className="ml-auto text-gray-500 text-[10px]">
-                                      {isExpanded ? '▲' : '▼'}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {isExpanded && alerts.length > 1 && (
-                                  <div className="flex flex-col gap-1 pl-2 border-l-2 text-amber-300 border-gray-700/50">
-                                    {alerts.slice(1).map((alert, idx) => (
-                                      <div key={idx}>{alert.message}</div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-
-                        <div className="text-gray-300 whitespace-nowrap">
-                          {miner.temperature || 0}°C /{' '}
-                          {miner.vr_temperature || 0}°C
-                        </div>
-                        <div className="text-gray-300 whitespace-nowrap">
-                          <Link
-                            to="#"
-                            onClick={(e) => e.preventDefault()}
-                            className={`inline-flex px-3 py-1 text-xs rounded border ${
-                              minerHistory[miner.id] &&
-                              minerHistory[miner.id].length > 1
-                                ? 'border-gray-600 bg-gray-800 hover:bg-gray-700 cursor-pointer'
-                                : 'border-gray-700 bg-gray-900 text-gray-500 cursor-not-allowed'
-                            }`}
-                            title={
-                              minerHistory[miner.id] &&
-                              minerHistory[miner.id].length > 1
-                                ? 'View detailed analytics'
-                                : 'Collecting data... Please wait'
-                            }
-                          >
-                            Details
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <MinerTable
+                miners={sortedDisplayedMiners}
+                minerHistory={minerHistory}
+                getAlerts={getAlerts}
+                expandedAlerts={expandedAlerts}
+                setExpandedAlerts={setExpandedAlerts}
+                statusStyles={statusStyles}
+              />
             )}
           </>
         )}

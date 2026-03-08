@@ -60,6 +60,29 @@ export type AnalyticsChartsProps = {
   fleetHistory: HistoryPoint[];
 };
 export type MinerAlert = {
-  message: string;
-  severity: 'info' | 'warning' | 'critical';
+  message: string; 
+}
+export interface MinerTableProps {
+  miners: Miner[];
+  minerHistory: Record<string, MinerAnalyticsPoint[]>;
+  getAlerts: (miner: Miner) => MinerAlert[];
+  expandedAlerts: Record<string, boolean>;
+  setExpandedAlerts: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  statusStyles: Record<Miner['status'], string>;
 };
+export interface MinerDashboardHeaderProps {
+  totalMiners: number;
+  totalHashrate: number;
+  totalPower: number;
+  avgEfficiency: number;
+}
+export interface MinerControlsProps {
+  newMinerIP: string;
+  setNewMinerIP: (ip: string) => void;
+  addMinerByIP: () => void;
+  loading: boolean;
+  lastUpdate: Date | null;
+  refreshAllMiners: () => void;
+}
+export const isActiveMiner = (miner: Miner) => 
+  miner.status === 'online' || miner.status === 'warning';
