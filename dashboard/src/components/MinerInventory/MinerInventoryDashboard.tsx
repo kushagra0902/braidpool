@@ -104,7 +104,9 @@ const MinerInventoryDashboard = () => {
     setMinerHistory((prev) => {
       const next = { ...prev };
       miners.forEach((miner) => {
-        const history = next[miner.id] ?? [];
+        const minerKey = miner.mac || miner.ip || miner.id;
+
+        const history = next[minerKey] ?? [];
         const point: MinerAnalyticsPoint = {
           timestamp,
           hashrate: miner.hashrate_current || 0,
@@ -113,7 +115,7 @@ const MinerInventoryDashboard = () => {
           temperature: miner.temperature || 0,
           vrTemperature: miner.vr_temperature || 0,
         };
-        next[miner.id] = [...history, point].slice(-MAX_HISTORY_POINTS);
+        next[minerKey] = [...history, point].slice(-MAX_HISTORY_POINTS);
       });
       return next;
     });
@@ -134,7 +136,7 @@ const MinerInventoryDashboard = () => {
   const getAlerts = (miner: Miner): Alert[] => {
     if (miner.status === 'offline') return [];
     const alerts: Alert[] = [];
-    if ((miner.hashrate_current ?? 0) <= THRESHOLDS.LOW_hASHRATE) {
+    if ((miner.hashrate_current ?? 0) <= THRESHOLDS.LOW_HASHRATE) {
       alerts.push({ message: `Hashrate is zero` });
     }
     if (miner.temperature > THRESHOLDS.ASIC_TEMP_CRITICAL) {

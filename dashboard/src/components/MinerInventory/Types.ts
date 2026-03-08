@@ -1,3 +1,4 @@
+import { Dispatch, SetStateAction } from 'react';
 export interface Miner {
   id: string;
   ip: string;
@@ -67,9 +68,7 @@ export interface MinerTableProps {
   minerHistory: Record<string, MinerAnalyticsPoint[]>;
   getAlerts: (miner: Miner) => MinerAlert[];
   expandedAlerts: Record<string, boolean>;
-  setExpandedAlerts: React.Dispatch<
-    React.SetStateAction<Record<string, boolean>>
-  >;
+  setExpandedAlerts: Dispatch<SetStateAction<Record<string, boolean>>>;
   statusStyles: Record<Miner['status'], string>;
 }
 export interface MinerDashboardHeaderProps {
