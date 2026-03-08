@@ -104,7 +104,7 @@ const MinerInventoryDashboard = () => {
     setMinerHistory((prev) => {
       const next = { ...prev };
       miners.forEach((miner) => {
-        const minerKey = miner.mac || miner.ip || miner.id;
+        const minerKey = miner.ip;
 
         const history = next[minerKey] ?? [];
         const point: MinerAnalyticsPoint = {
@@ -125,8 +125,8 @@ const MinerInventoryDashboard = () => {
   const determineStatus = (data: any): 'online' | 'warning' | 'offline' => {
     if (!data.is_mining || (data.hashrate_current || 0) === 0) return 'offline';
     if (
-      (data.temperature || 0) > 80 ||
-      (data.vr_temperature || 0) > 85 ||
+      (data.temperature || 0) > THRESHOLDS.ASIC_TEMP_CRITICAL ||
+      (data.vr_temperature || 0) > THRESHOLDS.VR_TEMP_CRITICAL ||
       data.errors?.length > 0
     )
       return 'warning';
