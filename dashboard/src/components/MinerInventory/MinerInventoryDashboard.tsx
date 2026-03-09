@@ -45,7 +45,7 @@ const MinerInventoryDashboard = () => {
 
   useEffect(() => {
     if (miners.length === 0) return;
-   const timestamp = Date.now();
+    const timestamp = Date.now();
     const totalHashrateNow = miners.reduce(
       (sum, m) =>
         m.status === 'online' || m.status === 'warning'
