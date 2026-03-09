@@ -7,7 +7,7 @@ const MinerControls: React.FC<MinerControlsProps> = ({
   addMinerByIP,
   loading,
   lastUpdate,
-  refreshAllMiners,
+
 }) => (
   <div className="mt-6 relative flex items-center w-full gap-2 mb-12">
     <div className="absolute left-1/2 transform -translate-x-1/2 flex gap-2">
@@ -34,12 +34,7 @@ const MinerControls: React.FC<MinerControlsProps> = ({
           ? `Last update: ${lastUpdate.toLocaleString()}`
           : 'Never updated'}
       </div>
-      <button
-        onClick={refreshAllMiners}
-        className="px-3 py-1 text-sm rounded border border-gray-600 text-white bg-gray-800 hover:bg-gray-700 cursor-pointer"
-      >
-        Refresh
-      </button>
+      
     </div>
   </div>
 );

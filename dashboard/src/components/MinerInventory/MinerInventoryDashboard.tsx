@@ -28,7 +28,7 @@ const MinerInventoryDashboard = () => {
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'online' | 'warning' | 'offline'
   >('all');
-  const [refreshInterval, setRefreshInterval] = useState(30);
+  const [refreshInterval, setRefreshInterval] = useState(2);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const minersRef = useRef<Miner[]>([]);
   const [fleetHistory, setFleetHistory] = useState<HistoryPoint[]>([]);
@@ -45,12 +45,7 @@ const MinerInventoryDashboard = () => {
 
   useEffect(() => {
     if (miners.length === 0) return;
-    const anyActive = miners.some(
-      (miner) => miner.status === 'online' || miner.status === 'warning'
-    );
-    if (!anyActive) return;
-
-    const timestamp = Date.now();
+   const timestamp = Date.now();
     const totalHashrateNow = miners.reduce(
       (sum, m) =>
         m.status === 'online' || m.status === 'warning'
