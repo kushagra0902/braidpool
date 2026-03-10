@@ -255,7 +255,7 @@ const MinerInventoryDashboard = () => {
     }
     setLoading(false);
   };
-  const refreshInterval = REFRESH_INTERVAL; 
+  const refreshInterval = REFRESH_INTERVAL;
   useEffect(() => {
     if (!autoRefresh || miners.length === 0) return;
 
