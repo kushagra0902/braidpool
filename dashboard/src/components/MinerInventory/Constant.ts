@@ -4,5 +4,4 @@ export const THRESHOLDS = {
   VR_TEMP_CRITICAL: 105,
   VOLTAGE_LOW: 4,
   FAN_SPEED_LOW: 1000,
-  LOW_HASHRATE: 0,
 } as const;

@@ -28,7 +28,7 @@ const MinerInventoryDashboard = () => {
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'online' | 'warning' | 'offline'
   >('all');
-  const [refreshInterval, setRefreshInterval] = useState(2);
+  const [refreshInterval, setRefreshInterval] = useState(5);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const minersRef = useRef<Miner[]>([]);
   const [fleetHistory, setFleetHistory] = useState<HistoryPoint[]>([]);
@@ -38,7 +38,7 @@ const MinerInventoryDashboard = () => {
   const [expandedAlerts, setExpandedAlerts] = useState<Record<string, boolean>>(
     {}
   );
-
+  const [lastActiveUpdate, setLastActiveUpdate] = useState<Date | null>(null);
   useEffect(() => {
     minersRef.current = miners;
   }, [miners]);
@@ -99,7 +99,7 @@ const MinerInventoryDashboard = () => {
     setMinerHistory((prev) => {
       const next = { ...prev };
       miners.forEach((miner) => {
-        const minerKey = miner.ip;
+        const minerKey = miner.id;
 
         const history = next[minerKey] ?? [];
         const point: MinerAnalyticsPoint = {
@@ -131,9 +131,6 @@ const MinerInventoryDashboard = () => {
   const getAlerts = (miner: Miner): Alert[] => {
     if (miner.status === 'offline') return [];
     const alerts: Alert[] = [];
-    if ((miner.hashrate_current ?? 0) <= THRESHOLDS.LOW_HASHRATE) {
-      alerts.push({ message: `Hashrate is zero` });
-    }
     if (miner.temperature > THRESHOLDS.ASIC_TEMP_CRITICAL) {
       alerts.push({ message: `ASIC Temp High` });
     }
@@ -248,12 +245,14 @@ const MinerInventoryDashboard = () => {
     });
 
     setMiners(updatedMiners);
+    setLastUpdate(new Date());
+
     if (
       updatedMiners.some(
         (miner) => miner.status === 'online' || miner.status === 'warning'
       )
     ) {
-      setLastUpdate(new Date());
+      setLastActiveUpdate(new Date());
     }
     setLoading(false);
   };
@@ -398,7 +397,6 @@ const MinerInventoryDashboard = () => {
             addMinerByIP={addMinerByIP}
             loading={loading}
             lastUpdate={lastUpdate}
-            refreshAllMiners={refreshAllMiners}
           />
 
           <MinerDashboardHeader

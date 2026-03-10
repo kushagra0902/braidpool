@@ -83,7 +83,6 @@ export interface MinerControlsProps {
   addMinerByIP: () => void;
   loading: boolean;
   lastUpdate: Date | null;
-  refreshAllMiners: () => void;
 }
 export const isActiveMiner = (miner: Miner) =>
   miner.status === 'online' || miner.status === 'warning';
