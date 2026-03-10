@@ -84,5 +84,3 @@ export interface MinerControlsProps {
   loading: boolean;
   lastUpdate: Date | null;
 }
-export const isActiveMiner = (miner: Miner) =>
-  miner.status === 'online' || miner.status === 'warning';

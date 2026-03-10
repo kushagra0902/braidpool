@@ -10,7 +10,7 @@ import AnalyticsCharts from './AnalyticsCharts';
 import MinerTable from './MinerTable';
 import MinerDashboardHeader from './MinerDashboardHeader';
 import MinerControls from './MinerControls';
-import { HISTORY_POINTS, THRESHOLDS } from './Constant';
+import { HISTORY_POINTS, THRESHOLDS, REFRESH_INTERVAL } from './Constant';
 
 const MAX_HISTORY_POINTS = HISTORY_POINTS;
 
@@ -28,7 +28,7 @@ const MinerInventoryDashboard = () => {
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'online' | 'warning' | 'offline'
   >('all');
-  const [refreshInterval, setRefreshInterval] = useState(5);
+
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const minersRef = useRef<Miner[]>([]);
   const [fleetHistory, setFleetHistory] = useState<HistoryPoint[]>([]);
@@ -100,7 +100,6 @@ const MinerInventoryDashboard = () => {
       const next = { ...prev };
       miners.forEach((miner) => {
         const minerKey = miner.id;
-
         const history = next[minerKey] ?? [];
         const point: MinerAnalyticsPoint = {
           timestamp,
@@ -256,7 +255,7 @@ const MinerInventoryDashboard = () => {
     }
     setLoading(false);
   };
-
+  const refreshInterval = REFRESH_INTERVAL; 
   useEffect(() => {
     if (!autoRefresh || miners.length === 0) return;
 

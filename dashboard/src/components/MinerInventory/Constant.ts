@@ -5,3 +5,4 @@ export const THRESHOLDS = {
   VOLTAGE_LOW: 4,
   FAN_SPEED_LOW: 1000,
 } as const;
+export const REFRESH_INTERVAL = 5;
