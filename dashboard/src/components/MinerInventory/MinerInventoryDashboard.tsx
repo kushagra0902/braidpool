@@ -66,9 +66,8 @@ const MinerInventoryDashboard = () => {
 
     const avgEfficiencyNow =
       activeMiners.length > 0
-        ? (activeMiners.reduce((sum, m) => sum + (m.efficiency || 0), 0) /
-            activeMiners.length) *
-          1000
+        ? activeMiners.reduce((sum, m) => sum + (m.efficiency || 0), 0) /
+          activeMiners.length
         : 0;
     const avgTempNow =
       activeMiners.length > 0

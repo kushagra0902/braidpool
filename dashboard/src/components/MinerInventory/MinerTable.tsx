@@ -52,7 +52,7 @@ const MinerTable: React.FC<MinerTableProps> = ({
                   {(miner.hashrate_current || 0).toFixed(3)} TH/s
                 </div>
                 <div className="whitespace-nowrap">
-                  {((miner.efficiency || 0) * 1000).toFixed(1)} W/TH
+                  {(miner.efficiency || 0).toFixed(1)} W/TH
                 </div>
                 <div className="whitespace-nowrap">
                   {miner.power_usage || 0} W

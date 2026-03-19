@@ -100,13 +100,33 @@ const AnalyticsCharts = ({ fleetHistory }: AnalyticsChartsProps) => {
               />
               <YAxis tick={{ fill: '#aaa' }} />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: '#2d2d2d',
-                  borderColor: '#555',
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  return (
+                    <div className="bg-[#1e1e1e] border border-gray-700 rounded-lg px-4 py-3 shadow-lg">
+                      <div className="text-gray-400 text-sm mb-2">
+                        {new Date(label as number).toLocaleTimeString()}
+                      </div>
+                      {payload.map((entry) => (
+                        <div
+                          key={entry.dataKey}
+                          className="flex items-center gap-2 text-base"
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full"
+                            style={{ backgroundColor: entry.color }}
+                          />
+                          <span className="text-gray-300">{entry.name}:</span>
+                          <span className="text-white font-medium">
+                            {typeof entry.value === 'number'
+                              ? entry.value.toFixed(2)
+                              : entry.value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
                 }}
-                labelFormatter={(ts) =>
-                  new Date(ts as number).toLocaleTimeString()
-                }
               />
               <Legend />
               {chartConfig.lines.map((line) => (
