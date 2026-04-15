@@ -10,7 +10,7 @@ sleep 1
 cargo run -- --addnode=/ip4/127.0.0.1/udp/8000/quic-v1 --bind=127.0.0.1:9000 --stratum-port=3334 --rpc-bind=127.0.0.1:6683 &
 sleep 1
 echo
-echo ">>> Press any key to exit"
+echo ">>> Press Enter to exit"
 read -r _
 
 killall node
