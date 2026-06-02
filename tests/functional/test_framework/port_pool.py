@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 import socket
 import threading
 from dataclasses import dataclass
 
+from test_framework.logging_utils import log_event, log_exception
+
+
+logger = logging.getLogger(__name__)
 
 class PortAllocationError(RuntimeError):
     """Raised when a deterministic test port cannot be allocated."""
 
 
 class PortSeed:
-    """Global port seed set by the custom functional test runner."""
+    """Global port seed set by the functional test runner."""
 
     n: int = 0
 
@@ -78,6 +83,15 @@ class PortPool:
         self._lock = threading.Lock()
         if self.validate_ports:
             self._check_ephemeral_overlap()
+        log_event(
+            logger,
+            "port_pool_initialized",
+            level=logging.DEBUG,
+            port_seed=self.port_seed,
+            range_start=self.test_range_start,
+            range_end=self.test_range_end,
+            validate_ports=self.validate_ports,
+        )
 
     def allocate(self, component: str = "helper", node_id: int | None = None) -> int:
         """Allocate one deterministic port for *component*."""
@@ -95,8 +109,17 @@ class PortPool:
             port = self._port_for_offset(offset)
             self._validate_available(port, component, offset)
             self._allocated[port] = PortAllocation(component, offset, port)
-            if node_id is None:
-                self._next_by_component[component] = offset + 1
+            self._next_by_component[component] = max(self._next_by_component[component], offset + 1)
+            log_event(
+                logger,
+                "port_allocated",
+                level=logging.DEBUG,
+                component=component,
+                node_id=node_id,
+                offset=offset,
+                port=port,
+                port_seed=self.port_seed,
+            )
             return port
 
     def allocate_many(self, component: str, count: int) -> list[int]:
@@ -123,6 +146,7 @@ class PortPool:
                     )
                 self._validate_bindable(port, component, "manual")
                 self._manual[port] = component
+                log_event(logger, "manual_port_reserved", level=logging.DEBUG, component=component, port=port)
 
     @property
     def band(self) -> tuple[int, int]:
@@ -170,6 +194,7 @@ class PortPool:
         try:
             self._bind_probe(port)
         except OSError as exc:
+            log_exception(logger, "port_bind_probe_failed", exc, port=port, component=component, offset=offset)
             raise PortAllocationError(
                 f"Port {port} is not bindable for component={component!r}, "
                 f"offset={offset!r}: {exc}"
@@ -182,6 +207,15 @@ class PortPool:
             return
         start, end = ephemeral
         if self.test_range_start <= end and self.test_range_end >= start:
+            log_event(
+                logger,
+                "ephemeral_port_range_overlap",
+                level=logging.ERROR,
+                range_start=self.test_range_start,
+                range_end=self.test_range_end,
+                ephemeral_start=start,
+                ephemeral_end=end,
+            )
             raise PortAllocationError(
                 f"Configured test port range {self.test_range_start}-{self.test_range_end} "
                 f"overlaps kernel ephemeral range {start}-{end}. Choose a different base port."
@@ -190,7 +224,8 @@ class PortPool:
     @staticmethod
     def _linux_ephemeral_range() -> tuple[int, int] | None:
         try:
-            raw = open("/proc/sys/net/ipv4/ip_local_port_range", encoding="utf8").read()
+            with open("/proc/sys/net/ipv4/ip_local_port_range", encoding="utf8") as f:
+                raw = f.read()
         except OSError:
             return None
         parts = raw.split()

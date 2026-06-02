@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import logging
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -19,10 +21,15 @@ from pathlib import Path
 from typing import Sequence
 
 from test_framework.constants import STDERR_LOG_NAME, STDOUT_LOG_NAME, TEST_EXIT_PASSED, TEST_EXIT_SKIPPED
+from test_framework.logging_utils import configure_stream_logger, log_duration, log_event, log_exception
+
+
+logger = logging.getLogger(__name__)
 
 # Set of test scripts to run, in order. Extended tests are optional.
 BASE_SCRIPTS = [
     "feature_framework_unit_tests.py",
+    # TODO: "feature_node_startup.py", (Phase 3 deliverable)
 ]
 
 EXTENDED_SCRIPTS: list[str] = []
@@ -37,7 +44,7 @@ class ScheduledTest:
 
     @property
     def argv(self) -> list[str]:
-        return self.command.split()
+        return shlex.split(self.command)
 
     @property
     def script_name(self) -> str:
@@ -52,7 +59,7 @@ class ScheduledTest:
 class TestResult:
     name: str
     status: str
-    duration: int
+    duration: float
     testdir: Path
     stdout_path: Path
     stderr_path: Path
@@ -103,7 +110,7 @@ class RunningJob:
         return TestResult(
             name=self.name,
             status=status,
-            duration=int(time.time() - self.start_time),
+            duration=time.monotonic() - self.start_time,
             testdir=self.testdir,
             stdout_path=self.stdout_path,
             stderr_path=self.stderr_path,
@@ -136,13 +143,15 @@ class TestHandler:
     def done(self) -> bool:
         return not self.test_queue and not self.running
 
-    # Function to check running jobs for completion or timeout, and return finished results. This is called in a loop until all tests are done, with an optional failfast break. Also adds newly started jobs to fill available slots up to the configured concurrency level.
+    # Function to check running jobs for completion or timeout, and return finished results. 
+    # This is called in a loop until all tests are done, with an optional failfast break. 
+    # Also adds newly started jobs to fill available slots up to the configured concurrency level.
     def get_next(self) -> list[TestResult]:
         self._fill_available_slots()
 
         while True:
             finished: list[TestResult] = []
-            now = time.time()
+            now = time.monotonic()
             for job in list(self.running):
                 if job.has_finished():
                     self.running.remove(job)
@@ -150,6 +159,7 @@ class TestHandler:
                     continue
                 if job.has_timed_out(now, self.timeout):
                     job.timed_out = True
+                    log_event(logger, "runner_test_timeout", level=logging.ERROR, test=job.name, timeout_seconds=self.timeout)
                     with job.stderr_path.open("ab", buffering=0) as stderr:
                         stderr.write(
                             f"\nTest runner timeout after {self.timeout:.1f}s\n".encode("utf8")
@@ -167,15 +177,19 @@ class TestHandler:
             time.sleep(0.1)
 
     def cleanup_running(self) -> None:
+        log_event(logger, "runner_cleanup_started", running_jobs=len(self.running))
         for job in list(self.running):
             job.terminate()
         self.running.clear()
+        log_event(logger, "runner_cleanup_finished")
 
     def _fill_available_slots(self) -> None:
         while len(self.running) < self.jobs and self.test_queue:
             self._start(self.test_queue.pop(0))
 
-    # Function to start a test subprocess for a scheduled test, with logs directed to the appropriate files in a test-specific subdirectory. The process is launched in a new session for easier cleanup, and the RunningJob state is recorded for monitoring.
+    # Function to start a test subprocess for a scheduled test, with logs directed to the appropriate files in a test-specific subdirectory. 
+    # The process is launched in a new session for easier cleanup, and the RunningJob state is recorded for monitoring.
+    
     def _start(self, scheduled: ScheduledTest) -> None:
         test_argv = scheduled.argv
         script_name = test_argv[0]
@@ -184,8 +198,6 @@ class TestHandler:
         testdir.mkdir(parents=True, exist_ok=True)
         stdout_path = testdir / STDOUT_LOG_NAME
         stderr_path = testdir / STDERR_LOG_NAME
-        stdout_file = open(stdout_path, "ab", buffering=0)
-        stderr_file = open(stderr_path, "ab", buffering=0)
         args = [
             sys.executable,
             str(self.tests_dir / script_name),
@@ -194,29 +206,50 @@ class TestHandler:
             f"--tmpdir={testdir}",
             f"--portseed={scheduled.port_seed}",
         ]
+        log_event(
+            logger,
+            "runner_test_starting",
+            test=scheduled.display_name,
+            port_seed=scheduled.port_seed,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+        )
+        
+        stdout_file = None
+        stderr_file = None
         try:
-            proc = subprocess.Popen(
-                args,
-                stdout=stdout_file,
-                stderr=stderr_file,
-                cwd=self.tests_dir,
-                start_new_session=True,
-            )
+            stdout_file = open(stdout_path, "ab", buffering=0)
+            stderr_file = open(stderr_path, "ab", buffering=0)
+            try:
+                proc = subprocess.Popen(
+                    args,
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    cwd=self.tests_dir,
+                    start_new_session=True,
+                )
+            except Exception as exc:
+                log_exception(logger, "runner_test_start_failed", exc, test=scheduled.display_name)
+                raise
         finally:
-            stdout_file.close()
-            stderr_file.close()
+            if stdout_file:
+                stdout_file.close()
+            if stderr_file:
+                stderr_file.close()
         self.running.append(
             RunningJob(
                 scheduled=scheduled,
-                start_time=time.time(),
+                start_time=time.monotonic(),
                 process=proc,
                 testdir=testdir,
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
             )
         )
+        log_event(logger, "runner_test_started", test=scheduled.display_name, pid=proc.pid, port_seed=scheduled.port_seed)
 
-# Function to terminate a process group, firstly with SIGTERM and a wait, then with SIGKILL if it does not exit, and ignoring cases where the process is already gone. This is used for cleaning up test subprocesses on timeout or interrupt.
+# Function to terminate a process group, firstly with SIGTERM and a wait, then with SIGKILL if it does not exit.
+# Ignoring cases where the process is already gone. This is used for cleaning up test subprocesses on timeout or interrupt.
 def terminate_process_group(proc: subprocess.Popen) -> None:
     """Terminate a process group robustly."""
     if proc.poll() is not None:
@@ -229,6 +262,7 @@ def terminate_process_group(proc: subprocess.Popen) -> None:
         if proc.poll() is not None:
             return
         try:
+            log_event(logger, "runner_signal_sent", level=logging.DEBUG, pid=proc.pid, signal=sig.name)
             os.killpg(pgid, sig)
         except ProcessLookupError:
             return
@@ -272,15 +306,12 @@ def build_test_list(tests: list[str], *, extended: bool, exclude: str | None, pa
 
 def schedule_tests(test_list: list[str]) -> list[ScheduledTest]:
     """Assign stable port seeds before any tests are started."""
-    return [ScheduledTest(command=test, port_seed=index) for index, test in enumerate(test_list)]
+    scheduled = [ScheduledTest(command=test, port_seed=index) for index, test in enumerate(test_list)]
+    log_event(logger, "runner_tests_scheduled", test_count=len(scheduled), tests=[item.command for item in scheduled])
+    return scheduled
 
 
-def split_runner_and_script_args(argv: Sequence[str]) -> tuple[list[str], list[str]]:
-    """Split runner args from script args using explicit '--' semantics."""
-    if "--" not in argv:
-        return list(argv), []
-    separator = argv.index("--")
-    return list(argv[:separator]), list(argv[separator + 1 :])
+
 
 # Read last N lines of a file efficiently without loading the whole file, used for printing combined logs on failure with a specified line limit.
 def tail_file(path: Path, lines: int) -> str:
@@ -306,19 +337,19 @@ def tail_file(path: Path, lines: int) -> str:
     return "\n".join(data.decode("utf8", errors="replace").splitlines()[-lines:])
 
 
-def print_results(results: list[TestResult], runtime: int) -> None:
+def print_results(results: list[TestResult], runtime: float) -> None:
     max_name = max(len(result.name) for result in results) if results else 4
     print("\n{} | STATUS  | DURATION".format("TEST".ljust(max_name)))
     print("-" * (max_name + 23))
     for result in sorted(results, key=TestResult.sort_key):
-        print(f"{result.name.ljust(max_name)} | {result.status.ljust(7)} | {result.duration}s")
+        print(f"{result.name.ljust(max_name)} | {result.status.ljust(7)} | {result.duration:.3f}s")
     all_passed = all(result.was_successful for result in results)
     status = "Passed" if all_passed else "Failed"
     print("-" * (max_name + 23))
-    print(f"{'ALL'.ljust(max_name)} | {status.ljust(7)} | {runtime}s")
+    print(f"{'ALL'.ljust(max_name)} | {status.ljust(7)} | {runtime:.3f}s")
 
 
-def write_results(results: list[TestResult], filepath: Path, runtime: int) -> None:
+def write_results(results: list[TestResult], filepath: Path, runtime: float) -> None:
     with filepath.open("w", newline="", encoding="utf8") as output:
         writer = csv.writer(output)
         writer.writerow(["test", "status", "duration_seconds"])
@@ -346,11 +377,14 @@ def parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--tmpdirprefix", "-t", default=tempfile.gettempdir())
     parser.add_argument("tests", nargs="*")
 
-    runner_argv, script_args = split_runner_and_script_args(argv)
-    return parser.parse_args(runner_argv), script_args
+    return parser.parse_known_args(argv)
 
-# Main function to parse arguments, build the test list, schedule tests with port seeds, and use TestHandler to run and monitor the tests while collecting results. It assigns the port seeds before starting any tests using helper functions, and handles printing results and cleanup based on success or failure.
+# Main function to parse arguments, build the test list, schedule tests with port seeds, 
+# and use TestHandler to run and monitor the tests while collecting results.
+# It assigns the port seeds before starting any tests using helper functions, 
+# and handles printing results and cleanup based on success or failure.
 def main() -> int:
+    configure_stream_logger(__name__)
     args, passon_args = parse_args(sys.argv[1:])
     if args.nocleanup:
         passon_args.append("--nocleanup")
@@ -358,8 +392,10 @@ def main() -> int:
     test_list = build_test_list(args.tests, extended=args.extended, exclude=args.exclude, pattern=args.filter)
     scheduled_tests = schedule_tests(test_list)
     timestamp = dt.datetime.now(tz=dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
-    tmpdir = Path(args.tmpdirprefix) / f"bp_func_test_runner_{timestamp}"
-    tmpdir.mkdir(parents=True, exist_ok=False)
+    prefix = f"bp_func_test_runner_{timestamp}_"
+    tmpdir_str = tempfile.mkdtemp(prefix=prefix, dir=args.tmpdirprefix)
+    tmpdir = Path(tmpdir_str)
+    log_event(logger, "runner_started", tmpdir=tmpdir, jobs=args.jobs, timeout_seconds=args.timeout)
 
     tests_dir = Path(__file__).resolve().parent
     handler = TestHandler(
@@ -370,7 +406,7 @@ def main() -> int:
         jobs=args.jobs,
         timeout=args.timeout if args.timeout > 0 else None,
     )
-    start_time = time.time()
+    start_time = time.monotonic()
     results: list[TestResult] = []
     all_passed = True
 
@@ -380,9 +416,16 @@ def main() -> int:
                 break
             for result in handler.get_next():
                 results.append(result)
+                log_duration(
+                    logger,
+                    "runner_test_finished",
+                    result.duration,
+                    status=result.status.lower(),
+                    test=result.name,
+                )
                 if result.status == "Failed":
                     all_passed = False
-                    print(f"\n{result.name} failed after {result.duration}s")
+                    print(f"\n{result.name} failed after {result.duration:.3f}s")
                     if args.combinedlogslen:
                         stdout_tail = tail_file(result.stdout_path, args.combinedlogslen)
                         stderr_tail = tail_file(result.stderr_path, args.combinedlogslen)
@@ -392,11 +435,11 @@ def main() -> int:
                             print("\nstderr tail:\n" + stderr_tail)
     except KeyboardInterrupt:
         all_passed = False
-        handler.cleanup_running()
+        log_event(logger, "runner_interrupted", level=logging.WARNING)
     finally:
         handler.cleanup_running()
 
-    runtime = int(time.time() - start_time)
+    runtime = time.monotonic() - start_time
     print_results(results, runtime)
     if args.resultsfile:
         write_results(results, args.resultsfile, runtime)
@@ -406,6 +449,7 @@ def main() -> int:
     else:
         print(f"Test data left in {tmpdir}")
 
+    log_duration(logger, "runner_finished", time.monotonic() - start_time, status="passed" if all_passed else "failed")
     return 0 if all_passed else 1
 
 
