@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 Transport = Callable[[str, bytes, float, str | None], bytes]
 
+_MAX_HTTP_BODY_BYTES = 10 * 1024 * 1024  # 10 MiB cap on HTTP error body reads
+_RETRYABLE_OSERRORS = (ConnectionResetError, BrokenPipeError)
+
 
 class RpcError(Exception):
     """Base exception for JSON-RPC failures."""
@@ -165,7 +168,7 @@ class RpcClient:
                     raise RpcTransportError(None, f"RPC {method} authentication failed (401 Unauthorized)") from exc
                 if exc.code == 500:
                     try:
-                        return exc.read()
+                        return exc.read(_MAX_HTTP_BODY_BYTES)
                     except Exception:
                         pass
                 last_error = exc
@@ -183,7 +186,6 @@ class RpcClient:
                     log_event(self.logger, "rpc_connection_refused", level=logging.WARNING, method=method, attempt=attempt + 1)
                     raise RpcTransportError(None, f"RPC {method} connection refused") from exc
             except OSError as exc:
-                _RETRYABLE_OSERRORS = (ConnectionResetError, BrokenPipeError)
                 if not isinstance(exc, _RETRYABLE_OSERRORS) or attempt == attempts - 1:
                     log_event(self.logger, "rpc_transport_failed", level=logging.WARNING, method=method, attempt=attempt + 1, error=str(exc))
                     raise RpcTransportError(None, f"RPC {method} transport error: {exc}") from exc

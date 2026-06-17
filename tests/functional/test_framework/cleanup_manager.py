@@ -10,9 +10,9 @@ import subprocess
 import threading
 from collections.abc import Callable
 from types import FrameType
+import time
 
-from test_framework.logging_utils import log_event, log_exception
-from test_framework.process_utils import _terminate_process_group
+from test_framework.logging_utils import log_event, log_exception, log_duration
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,12 +29,14 @@ class CleanupManager:
     def __init__(self, logger: logging.Logger | None = None) -> None:
         self._logger = logger or _LOGGER
         self._stack: list[tuple[str, Callable[[], None]]] = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._ran = False
         self._previous_handlers: dict[int, signal.Handlers] = {}
         self._install_handlers()
 
-    #The cleanup manager is a registrable that is attached to different modules later when running the test suite such as miner_manager. This allows us to register different callback fucntions in a LIFo stack.
+    # The cleanup manager is a registrable that is attached to different modules
+    # later when running the test suite such as miner_manager. This allows us to
+    # register different callback functions in a LIFO stack.
     def register(self, fn: Callable[[], None], *, name: str | None = None) -> None:
         """Push a zero-argument cleanup callback onto the LIFO stack."""
         callback_name = name or _callable_name(fn)
@@ -82,7 +84,7 @@ class CleanupManager:
         """Register a callback that terminates a subprocess group on cleanup."""
 
         def _stop() -> None:
-            _terminate_process_group(
+            terminate_process_group(
                 process,
                 name=name,
                 term_timeout=term_timeout,
@@ -92,7 +94,10 @@ class CleanupManager:
 
         self.register(_stop, name=f"process:{name}")
 
-    #This installs all the handlers when the CleanupManger is initialized. It sets up a signal chaining mechaninsm so that when the test process is terminated due to signals it can gracefully exit after running all the cleanup callbacks.
+    # Install atexit and signal handlers when the CleanupManager is initialized.
+    # Sets up a signal chaining mechanism so that when the test process is
+    # terminated due to signals it can gracefully exit after running all the
+    # cleanup callbacks.
     def _install_handlers(self) -> None:
         atexit.register(self.run_all)
         for signum in (signal.SIGTERM, signal.SIGINT):
@@ -117,3 +122,108 @@ class CleanupManager:
 
 def _callable_name(fn: Callable[[], None]) -> str:
     return getattr(fn, "__qualname__", getattr(fn, "__name__", repr(fn)))
+
+
+def terminate_process_group(
+    process: subprocess.Popen,
+    *,
+    name: str,
+    term_timeout: float,
+    kill_timeout: float,
+    logger: logging.Logger | None = None,
+) -> None:
+    """Terminate *process* and its process group with SIGTERM, then SIGKILL.
+
+    The process **must** have been started with ``start_new_session=True``
+    so that its PGID differs from the caller's.  An assertion guards
+    against accidental self-kill.
+    """
+    process_logger = logger or _LOGGER
+    if process.poll() is not None:
+        log_event(
+            process_logger,
+            "process_stop_skipped",
+            level=logging.DEBUG,
+            name=name,
+            pid=process.pid,
+            returncode=process.returncode,
+        )
+        return
+
+    try:
+        pgid = os.getpgid(process.pid)
+    except OSError:
+        log_event(
+            process_logger,
+            "process_group_missing",
+            level=logging.DEBUG,
+            name=name,
+            pid=process.pid,
+        )
+        return
+
+    # Guard: never kill our own process group.
+    if pgid == os.getpgid(0):
+        log_event(
+            process_logger,
+            "process_group_is_self",
+            level=logging.ERROR,
+            name=name,
+            pid=process.pid,
+            pgid=pgid,
+        )
+        # Fall back to killing just the single process.
+        try:
+            process.terminate()
+            process.wait(timeout=term_timeout)
+        except (OSError, subprocess.TimeoutExpired):
+            try:
+                process.kill()
+                process.wait(timeout=kill_timeout)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        return
+
+    for sig, wait_time in (
+        (signal.SIGTERM, term_timeout),
+        (signal.SIGKILL, kill_timeout),
+    ):
+        if process.poll() is not None:
+            return
+        started = time.monotonic()
+        log_event(
+            process_logger,
+            "process_signal_sent",
+            level=logging.DEBUG,
+            name=name,
+            pid=process.pid,
+            pgid=pgid,
+            signal=sig.name,
+        )
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return
+        try:
+            process.wait(timeout=wait_time)
+            log_duration(
+                process_logger,
+                "process_signal_wait",
+                time.monotonic() - started,
+                name=name,
+                pid=process.pid,
+                signal=sig.name,
+            )
+            return
+        except subprocess.TimeoutExpired:
+            log_duration(
+                process_logger,
+                "process_signal_wait",
+                time.monotonic() - started,
+                status="timeout",
+                level=logging.WARNING,
+                name=name,
+                pid=process.pid,
+                signal=sig.name,
+            )
+            continue
