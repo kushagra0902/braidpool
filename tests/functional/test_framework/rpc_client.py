@@ -91,7 +91,7 @@ class JsonRpcClient:
             self._auth_header = f"Basic {encoded_auth}"
 
     def _call(self, method: str, params: Any = None) -> Any:
-        started = time.monotonic()
+        started = time.monotonic() # ensures that even if system time changed, actual time is maintained
         request_id = next(self._ids)
         payload_obj = {"jsonrpc": "2.0", "id": request_id, "method": method}
         if params is not None:
@@ -268,6 +268,15 @@ class RpcClient(JsonRpcClient):
 
     def get_ipc_stats(self) -> dict:
         return self._call("getipcstats")
+
+    def get_node_info(self, bead_hash: str) -> dict:
+        return self._call("getnodeinfo", [bead_hash])
+
+    def staged_transactions(self) -> list[dict]:
+        return self._call("stagedtransactions")
+
+    def unstage_transactions(self, txid: str) -> bool:
+        return self._call("unstagetransactions", [txid])
 
     def bitcoin_proxy(self, method: str, params: Any = None) -> Any:
         return self._call("bitcoinproxy", [method, params or []])
