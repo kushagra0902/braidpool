@@ -26,13 +26,19 @@ class CleanupManager:
     allows signal handlers to be installed there.
     """
 
-    def __init__(self, logger: logging.Logger | None = None) -> None:
+    def __init__(
+        self,
+        logger: logging.Logger | None = None,
+        *,
+        install_handlers: bool = True,
+    ) -> None:
         self._logger = logger or _LOGGER
         self._stack: list[tuple[str, Callable[[], None]]] = []
         self._lock = threading.RLock()
         self._ran = False
         self._previous_handlers: dict[int, signal.Handlers] = {}
-        self._install_handlers()
+        if install_handlers:
+            self._install_handlers()
 
     # The cleanup manager is a registrable that is attached to different modules
     # later when running the test suite such as miner_manager. This allows us to
@@ -72,6 +78,17 @@ class CleanupManager:
                 log_event(self._logger, "cleanup_callback_done", name=name)
             except Exception as exc:
                 log_exception(self._logger, "cleanup_callback_failed", exc, name=name)
+
+        # restore previous signal handlers so that subsequent
+        # code is not left with stale references to this now-finished CleanupManager.
+        for signum, handler in self._previous_handlers.items():
+            try:
+                signal.signal(signum, handler)
+            except (OSError, ValueError):
+                # Not the main thread, or signal already changed — skip.
+                pass
+        self._previous_handlers.clear()
+        atexit.unregister(self.run_all)
 
     def managed_process(
         self,
@@ -116,6 +133,15 @@ class CleanupManager:
         if callable(previous):
             previous(signum, frame)
             return
+        # No custom prior handler — restore default and re-raise so the OS
+        # records the correct exit status (e.g. 128 + signum).
+        log_event(
+            self._logger,
+            "cleanup_re_raising_signal",
+            level=logging.WARNING,
+            signal=signum,
+            message=f"Re-raising signal {signum} with SIG_DFL; process will now terminate",
+        )
         signal.signal(signum, signal.SIG_DFL)
         os.kill(os.getpid(), signum)
 
@@ -156,6 +182,19 @@ def terminate_process_group(
         log_event(
             process_logger,
             "process_group_missing",
+            level=logging.DEBUG,
+            name=name,
+            pid=process.pid,
+        )
+        return
+
+    # re-poll immediately after getpgid() to narrow the TOCTOU
+    # window. Between poll() and getpgid() the process could have exited and
+    # its PID recycled to an unrelated process.
+    if process.poll() is not None:
+        log_event(
+            process_logger,
+            "process_exited_before_signal",
             level=logging.DEBUG,
             name=name,
             pid=process.pid,
@@ -227,3 +266,18 @@ def terminate_process_group(
                 signal=sig.name,
             )
             continue
+
+    # SIGKILL timed out — the process descriptor must still be
+    # reaped to prevent a zombie entry accumulating in the OS process table.
+    try:
+        process.wait(timeout=0)
+    except subprocess.TimeoutExpired:
+        log_event(
+            process_logger,
+            "process_kill_unresponsive",
+            level=logging.ERROR,
+            name=name,
+            pid=process.pid,
+            pgid=pgid,
+            message="Process did not exit after SIGKILL; descriptor not reaped — possible kernel-level stuck process",
+        )
