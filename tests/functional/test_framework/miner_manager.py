@@ -20,6 +20,11 @@ class _Registerable(Protocol):
     def register(self, fn: Callable[[], None]) -> None: ...
 
 
+class StratumNode(Protocol):
+    @property
+    def stratum_port(self) -> int: ...
+
+
 ACCEPTED_SHARE_RE = re.compile(r"\b(accepted|share accepted|accepted share)\b", re.IGNORECASE)
 logger = logging.getLogger(__name__)
 
@@ -147,9 +152,9 @@ class MinerManager:
         self.miners: list[CpuMiner] = []
         self.logger = log_manager.logger
 
-    def spawn_miner(self, node: Any) -> CpuMiner:
+    def spawn_miner(self, node: StratumNode) -> CpuMiner:
         """Create and start a miner attached to *node*'s stratum port."""
-        stratum_port = getattr(node, "stratum_port", None)
+        stratum_port = node.stratum_port
         if stratum_port is None:
             raise TypeError(
                 f"spawn_miner: node {node!r} has no 'stratum_port' attribute. "

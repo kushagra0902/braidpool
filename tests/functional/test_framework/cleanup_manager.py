@@ -29,16 +29,12 @@ class CleanupManager:
     def __init__(
         self,
         logger: logging.Logger | None = None,
-        *,
-        install_handlers: bool = True,
     ) -> None:
         self._logger = logger or _LOGGER
         self._stack: list[tuple[str, Callable[[], None]]] = []
         self._lock = threading.RLock()
         self._ran = False
         self._previous_handlers: dict[int, signal.Handlers] = {}
-        if install_handlers:
-            self._install_handlers()
 
     # The cleanup manager is a registrable that is attached to different modules
     # later when running the test suite such as miner_manager. This allows us to
@@ -115,7 +111,7 @@ class CleanupManager:
     # Sets up a signal chaining mechanism so that when the test process is
     # terminated due to signals it can gracefully exit after running all the
     # cleanup callbacks.
-    def _install_handlers(self) -> None:
+    def install_signal_handlers(self) -> None:
         atexit.register(self.run_all)
         for signum in (signal.SIGTERM, signal.SIGINT):
             self._previous_handlers[signum] = signal.getsignal(signum)

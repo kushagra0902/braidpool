@@ -56,11 +56,11 @@ def _default_transport(url: str, payload: bytes, timeout: float, auth_header: st
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read()
+        return response.read(_MAX_HTTP_BODY_BYTES)
 
 
-class RpcClient:
-    """Synchronous JSON-RPC 2.0 client for a Braidpool node."""
+class JsonRpcClient:
+    """Synchronous JSON-RPC 2.0 client."""
 
     def __init__(
         self,
@@ -98,8 +98,10 @@ class RpcClient:
             payload_obj["params"] = params
         payload = json.dumps(payload_obj, separators=(",", ":")).encode("utf8")
 
+        safe_params = "<redacted_positional_args>" if isinstance(params, (list, tuple)) else params
+
         if self.trace:
-            log_event(self.logger, "rpc_request", level=logging.DEBUG, method=method, request_id=request_id, params=params)
+            log_event(self.logger, "rpc_request", level=logging.DEBUG, method=method, request_id=request_id, params=safe_params)
 
         try:
             raw = self._send_with_retries(method, payload)
@@ -126,7 +128,7 @@ class RpcClient:
                 time.monotonic() - started,
                 status="error",
                 request_id=request_id,
-                params=params if self.trace else None,
+                params=safe_params if self.trace else None,
                 error=error.message,
             )
             raise error from exc
@@ -137,7 +139,7 @@ class RpcClient:
                 time.monotonic() - started,
                 status="error",
                 request_id=request_id,
-                params=params if self.trace else None,
+                params=safe_params if self.trace else None,
                 error=exc.message,
             )
             raise
@@ -148,7 +150,7 @@ class RpcClient:
             time.monotonic() - started,
             status="ok",
             request_id=request_id,
-            params=params if self.trace else None,
+            params=safe_params if self.trace else None,
         )
         return response["result"]
 
@@ -204,6 +206,23 @@ class RpcClient:
             delay = min(delay * 2, 2.0)
 
         raise RpcTransportError(None, f"RPC {method} failed: {last_error!r}")
+
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        """Dynamically handle RPC methods not explicitly defined."""
+        if name.startswith("_"):
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        
+        def rpc_method(*args: Any, **kwargs: Any) -> Any:
+            if args and kwargs:
+                raise ValueError(f"Cannot pass both positional and keyword arguments to RPC method {name}")
+            params = kwargs if kwargs else list(args)
+            return self._call(name, params)
+            
+        return rpc_method
+
+
+class RpcClient(JsonRpcClient):
+    """Braidpool-specific JSON-RPC client."""
 
     def get_bead(self, bead_hash: str) -> dict:
         return self._call("getbead", [bead_hash])
@@ -286,19 +305,6 @@ class RpcClient:
             timeout=timeout,
             message=f"Peer count never reached {minimum}",
         )
-
-    def __getattr__(self, name: str) -> Callable[..., Any]:
-        """Dynamically handle RPC methods not explicitly defined."""
-        if name.startswith("_"):
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
-        
-        def rpc_method(*args: Any, **kwargs: Any) -> Any:
-            if args and kwargs:
-                raise ValueError(f"Cannot pass both positional and keyword arguments to RPC method {name}")
-            params = kwargs if kwargs else list(args)
-            return self._call(name, params)
-            
-        return rpc_method
 
 
 def _is_connection_refused(exc: urllib.error.URLError) -> bool:
