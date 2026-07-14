@@ -54,13 +54,6 @@ class TestNode:
         self.cleanup_manager = cleanup_manager
         self.stdout_path, self.stderr_path = log_manager.get_process_log_files(f"node{index}")
 
-    def __del__(self) -> None:
-        """Fallback cleanup if stop_node() wasn't called."""
-        if self.process is not None and self.process.poll() is None:
-            try:
-                self.process.kill()
-            except OSError:
-                pass
 
     def start(self, extra_args: list[str] | None = None) -> None:
         """Start the braidpool-node process."""
@@ -70,7 +63,7 @@ class TestNode:
         args = [
             str(self.binary_path),
             f"--network={self.config.network}",
-            f"--rpc-port={self.rpc_port}",
+            f"--rpc-bind=127.0.0.1:{self.rpc_port}",
             f"--bind=127.0.0.1:{self.p2p_port}",
             f"--stratum-port={self.stratum_port}",
             f"--datadir={self.datadir}",
@@ -120,8 +113,18 @@ class TestNode:
         """Wait for the Braidpool node RPC to become reachable."""
         timeout = timeout or self.config.startup_timeout_braidpool
         log_event(self.logger, "braidpool_node_wait_rpc", node_id=self.index, timeout=timeout)
+
+        def _check_ready() -> bool:
+            # Fast-fail: if the process has already died, don't burn the full timeout.
+            if self.process is None or self.process.poll() is not None:
+                returncode = self.process.returncode if self.process else "?"
+                raise RuntimeError(
+                    f"node{self.index} exited (returncode={returncode}) before RPC became ready"
+                )
+            return self.rpc._try_get_braid_info()
+
         wait_until(
-            self.rpc._try_get_braid_info,
+            _check_ready,
             timeout=timeout,
             message=f"node{self.index} RPC not ready",
         )
@@ -131,8 +134,10 @@ class TestNode:
         """Stop the Braidpool node process group."""
         if self.process is None or self.process.poll() is not None:
             log_event(self.logger, "braidpool_node_stop_skipped", level=logging.DEBUG, node_id=self.index)
+            # Drop the reference even if already dead so the Popen object can be GC'd.
+            self.process = None
             return
-            
+
         log_event(self.logger, "braidpool_node_stopping", node_id=self.index, pid=self.process.pid)
         terminate_process_group(
             self.process,
@@ -142,6 +147,10 @@ class TestNode:
             logger=self.logger,
         )
         log_event(self.logger, "braidpool_node_stopped", node_id=self.index, returncode=self.process.returncode)
+        # Set the process reference to none so that the reference with the cleanup manager is the only remaining holder
+        # In case of any exceptional ending, if the process is already closed, it will check
+        # process.poll() != None and short-circuit cleanly.
+        self.process = None
 
     def wait_until_stopped(self, timeout: float = 10.0) -> None:
         """Wait for the node process to exit naturally."""
