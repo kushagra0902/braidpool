@@ -19,6 +19,7 @@ class NetworkConfig:
     initial_blocks: int = 101
 
 
+    bitcoin_rpc_port: int | None = None
     bitcoin_p2p_port: int | None = None
     bitcoin_ipc_socket: Path | None = None
 
