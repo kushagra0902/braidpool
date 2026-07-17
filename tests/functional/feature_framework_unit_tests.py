@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Self-tests for Phase 1 functional test framework components."""
+"""Self-tests for the Braidpool functional test framework (Phases 1–3)."""
 
 from __future__ import annotations
 
@@ -308,6 +308,7 @@ def test_find_binary_relative_path() -> None:
         binary = root / "node" / "src" / "cpuminer" / "minerd"
         binary.parent.mkdir(parents=True)
         binary.write_text("#!/bin/sh\n", encoding="utf8")
+        binary.chmod(binary.stat().st_mode | stat.S_IXUSR)  # must be executable for find_binary
         assert_equal(find_minerd(repo_root=root), binary)
 
 
@@ -421,6 +422,8 @@ def test_cleanup_manager_signal_restore() -> None:
     import signal
     original = signal.getsignal(signal.SIGTERM)
     cm = CleanupManager()
+    # Constructor is side-effect-free; handlers are installed explicitly.
+    cm.install_signal_handlers()
     assert signal.getsignal(signal.SIGTERM) is not original
     cm.run_all()
     assert signal.getsignal(signal.SIGTERM) is original
@@ -750,7 +753,7 @@ def main() -> int:
     parser.add_argument("--tmpdir", type=Path)
     parser.add_argument("--portseed", type=int, default=0)
     parser.add_argument("--nocleanup", action="store_true")
-    parser.parse_args()
+    args = parser.parse_args()
 
     # All test output goes through the structured logger so every line
     # carries a UTC timestamp, matching the rest of the framework.

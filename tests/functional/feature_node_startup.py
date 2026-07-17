@@ -13,7 +13,7 @@ from test_framework.logging_utils import configure_stream_logger, log_event
 from test_framework.network_config import NetworkConfig
 from test_framework.node_manager import NodeManager
 from test_framework.port_pool import PortPool
-from test_framework.util import SkipTest, wait_until
+from test_framework.util import SkipTest
 
 
 def run_test(node_manager: NodeManager) -> None:
@@ -39,6 +39,7 @@ def run_test(node_manager: NodeManager) -> None:
     assert isinstance(tips, list)
 
     # 7. Verify both nodes are alive and synced
+    assert len(node_manager.nodes) >= 2, "Expected at least 2 Braidpool nodes to be running"
     assert node_manager.nodes[1].is_running()
     node_manager.sync_all(timeout=30.0)
 
@@ -65,7 +66,8 @@ def main() -> int:
     
     configure_stream_logger(None, level="WARNING")
     
-    cleanup = CleanupManager()  # installs SIGTERM/SIGINT handlers by default
+    cleanup = CleanupManager()
+    cleanup.install_signal_handlers()  # must be called explicitly; constructor is side-effect-free
     log_manager = LogManager(tmpdir, "feature_node_startup", keep_on_success=args.nocleanup)
     port_pool = PortPool(port_seed=args.portseed)
     
