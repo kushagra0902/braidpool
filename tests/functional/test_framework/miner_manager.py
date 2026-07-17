@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -188,7 +189,7 @@ class MinerManager:
     def _resolve_minerd_path(self) -> Path:
         if self.config.minerd_bin_path is not None:
             path = Path(self.config.minerd_bin_path)
-            if path.exists():
+            if path.is_file() and os.access(path, os.X_OK):
                 return path
         return find_minerd()
 

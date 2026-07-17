@@ -121,8 +121,6 @@ class NodeManager:
             
         log_event(self.logger, "node_manager_teardown_finished")
 
-
-
     def sync_all(self, timeout: float = 60.0) -> None:
         """Wait until all nodes agree on the bead count."""
         if not self.nodes:
