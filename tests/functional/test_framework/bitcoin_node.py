@@ -14,7 +14,6 @@ from test_framework.util import find_binary, wait_until
 
 logger = logging.getLogger(__name__)
 
-
 def find_bitcoind(repo_root: Path | None = None) -> Path:
     """Find the bitcoin-node binary."""
     return find_binary(
@@ -23,17 +22,6 @@ def find_bitcoind(repo_root: Path | None = None) -> Path:
         ["../bitcoin/build/bin/bitcoin-node", "bitcoin-node", "target/debug/bitcoin-node"],
         repo_root=repo_root,
     )
-
-
-def find_bitcoin_cli(repo_root: Path | None = None) -> Path:
-    """Find the bitcoin-cli binary."""
-    return find_binary(
-        "bitcoin-cli",
-        "BITCOIN_CLI_PATH",
-        ["../bitcoin/build/bin/bitcoin-cli", "bitcoin-cli", "target/debug/bitcoin-cli"],
-        repo_root=repo_root,
-    )
-
 
 class BitcoinNode:
     """Manages a Bitcoin Core (bitcoin-node) instance for testing."""
@@ -63,9 +51,16 @@ class BitcoinNode:
         self.stdout_path, self.stderr_path = log_manager.get_process_log_files("bitcoin")
 
         self.binary_path = config.bitcoin_bin_path or find_bitcoind()
-        self._cli_path = config.bitcoin_cli_path or find_bitcoin_cli()
         self._coinbase_address: str | None = None
-        
+
+        # Per-test IPC socket path so concurrent test runs don't collide on
+        # the global default (/tmp/bitcoin-cpunet.sock).
+        self.ipc_socket_path: Path = (
+            config.bitcoin_ipc_socket
+            if config.bitcoin_ipc_socket is not None
+            else self.datadir / "bitcoin.sock"
+        )
+
         self.rpc = RpcClient(
             "127.0.0.1",
             self.rpc_port,
@@ -98,6 +93,10 @@ class BitcoinNode:
             "-dnsseed=0",
             "-addresstype=bech32",
             "-deprecatedrpc=create_bdb",
+            # Expose the mining IPC socket so the Braidpool node can connect
+            # without needing HTTP credentials.  The path is per-test so
+            # concurrent test runs never share a socket.
+            f"-ipcbind=unix:{self.ipc_socket_path}",
         ]
 
         log_event(self.logger, "bitcoin_starting", rpc_port=self.rpc_port, p2p_port=self.p2p_port)

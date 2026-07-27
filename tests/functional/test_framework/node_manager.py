@@ -86,6 +86,9 @@ class NodeManager:
                 f"--rpcport={self.bitcoin.rpc_port}",
                 f"--rpcuser={self.bitcoin.rpc_user}",
                 f"--rpcpass={self.bitcoin.rpc_password}",
+                # Each test run gets its own IPC socket so concurrent runs
+                # don't race on the global /tmp/bitcoin-cpunet.sock default.
+                f"--ipc-socket={self.bitcoin.ipc_socket_path}",
             ]
             
             if i > 0:
