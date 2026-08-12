@@ -103,8 +103,6 @@ class BraidpoolTestFramework(metaclass=BraidpoolTestMetaClass):
         parser.add_argument("--cachedir", type=Path, help="shared cache directory reserved for future use")
         parser.add_argument("--configfile", type=Path, help="runner configuration file")
         parser.add_argument("--nocleanup", action="store_true", help="preserve the test directory on success")
-        parser.add_argument("--noshutdown", action="store_true", help="leave test processes running for debugging")
-        parser.add_argument("--keep-logs", action="store_true", help="keep logs and reports after a passing test")
         parser.add_argument("--loglevel", default=None, help="framework log level")
         parser.add_argument("--tracerpc", action="store_true", help="log RPC request parameters")
         parser.add_argument("--portseed", type=int, default=0, help="deterministic port range seed")
@@ -138,11 +136,9 @@ class BraidpoolTestFramework(metaclass=BraidpoolTestMetaClass):
         if self.tmpdir is None:
             raise RuntimeError("Test directory was not initialized")
 
-        keep_on_success = self.options.keep_logs or self.config.keep_logs_on_success
         self.log_manager = LogManager(
             self.tmpdir,
             self.test_name,
-            keep_on_success=keep_on_success,
             log_level=self.config.log_level,
         )
         self.log = self.log_manager.logger
@@ -185,26 +181,19 @@ class BraidpoolTestFramework(metaclass=BraidpoolTestMetaClass):
     def shutdown(self, status: int = TEST_EXIT_FAILED) -> int:
         """Stop managed resources, finalize timing, and clean successful runs."""
         options = self.options
-        no_shutdown = bool(options and options.noshutdown)
 
-        if no_shutdown:
-            if self.cleanup_manager is not None:
-                self.cleanup_manager.disarm()
-            if self.log_manager is not None:
-                log_event(self.log, "test_shutdown_skipped", reason="--noshutdown")
-        else:
-            if self.node_manager is not None:
-                try:
-                    self.node_manager.teardown()
-                except Exception as exc:
-                    status = TEST_EXIT_FAILED
-                    self._log_exception("test_network_teardown_failed", exc)
-            if self.cleanup_manager is not None:
-                try:
-                    self.cleanup_manager.run_all()
-                except Exception as exc:
-                    status = TEST_EXIT_FAILED
-                    self._log_exception("test_cleanup_failed", exc)
+        if self.node_manager is not None:
+            try:
+                self.node_manager.teardown()
+            except Exception as exc:
+                status = TEST_EXIT_FAILED
+                self._log_exception("test_network_teardown_failed", exc)
+        if self.cleanup_manager is not None:
+            try:
+                self.cleanup_manager.run_all()
+            except Exception as exc:
+                status = TEST_EXIT_FAILED
+                self._log_exception("test_cleanup_failed", exc)
 
         if self.report is not None:
             try:
@@ -218,12 +207,10 @@ class BraidpoolTestFramework(metaclass=BraidpoolTestMetaClass):
 
         if self.log_manager is not None:
             passed_or_skipped = status in (TEST_EXIT_PASSED, TEST_EXIT_SKIPPED)
-            nocleanup = bool(options and (options.nocleanup or options.noshutdown))
+            nocleanup = bool(options and options.nocleanup)
             self.log_manager.cleanup(passed=passed_or_skipped, nocleanup=nocleanup)
         elif self.tmpdir is not None:
-            preserve = status == TEST_EXIT_FAILED or bool(
-                options and (options.nocleanup or options.noshutdown or options.keep_logs)
-            )
+            preserve = status == TEST_EXIT_FAILED or bool(options and options.nocleanup)
             if not preserve:
                 shutil.rmtree(self.tmpdir, ignore_errors=True)
         return status

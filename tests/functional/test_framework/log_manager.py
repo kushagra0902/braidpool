@@ -16,13 +16,11 @@ class LogManager:
         self,
         tmpdir: Path,
         test_name: str,
-        keep_on_success: bool = False,
         *,
         log_level: str | int = "INFO",
     ) -> None:
         self.tmpdir = Path(tmpdir)
         self.test_name = test_name
-        self.keep_on_success = keep_on_success
         self.tmpdir.mkdir(parents=True, exist_ok=True)
         self.framework_log = self.tmpdir / FRAMEWORK_LOG_NAME
         self.framework_log.touch(exist_ok=True)
@@ -63,7 +61,7 @@ class LogManager:
 
     def cleanup(self, *, passed: bool, nocleanup: bool = False) -> None:
         """Remove the temp directory on successful tests unless preservation is requested."""
-        if passed and not nocleanup and not self.keep_on_success:
+        if passed and not nocleanup:
             try:
                 log_event(self.logger, "log_cleanup_started", tmpdir=self.tmpdir)
                 close_logger(self.logger)
@@ -77,5 +75,4 @@ class LogManager:
                 "log_cleanup_skipped",
                 passed=passed,
                 nocleanup=nocleanup,
-                keep_on_success=self.keep_on_success,
             )
