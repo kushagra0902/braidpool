@@ -61,14 +61,9 @@ class LogManager:
 
     def cleanup(self, *, passed: bool, nocleanup: bool = False) -> None:
         """Remove the temp directory on successful tests unless preservation is requested."""
-        if passed and not nocleanup:
-            try:
-                log_event(self.logger, "log_cleanup_started", tmpdir=self.tmpdir)
-                close_logger(self.logger)
-                shutil.rmtree(self.tmpdir)
-            except Exception as exc:
-                self.logger = configure_file_logger(self._logger_name, self.framework_log, level=self._log_level)
-                log_exception(self.logger, "log_cleanup_failed", exc, tmpdir=self.tmpdir)
+        should_remove = passed and not nocleanup
+        if should_remove:
+            log_event(self.logger, "log_cleanup_started", tmpdir=self.tmpdir)
         else:
             log_event(
                 self.logger,
@@ -76,3 +71,15 @@ class LogManager:
                 passed=passed,
                 nocleanup=nocleanup,
             )
+
+        # A preserved test directory does not require an open file descriptor.
+        # Closing here also makes repeated in-process framework tests safe.
+        close_logger(self.logger)
+
+        if should_remove:
+            try:
+                shutil.rmtree(self.tmpdir)
+            except Exception as exc:
+                self.logger = configure_file_logger(self._logger_name, self.framework_log, level=self._log_level)
+                log_exception(self.logger, "log_cleanup_failed", exc, tmpdir=self.tmpdir)
+                close_logger(self.logger)
