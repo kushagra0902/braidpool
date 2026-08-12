@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +33,7 @@ class ReportManager:
         self.total_time_seconds: float | None = None
         self._started_monotonic = time.monotonic()
         self._finalized = False
+        self._finalize_lock = threading.Lock()
 
     @property
     def summary_path(self) -> Path:
@@ -46,25 +48,26 @@ class ReportManager:
             skipped: Whether the test was skipped.  A skipped status takes
                 precedence over ``passed`` when constructing the summary.
         """
-        if self._finalized:
-            return
+        with self._finalize_lock:
+            if self._finalized:
+                return
 
-        self.end_time = datetime.now(tz=timezone.utc)
-        self.total_time_seconds = max(0.0, time.monotonic() - self._started_monotonic)
-        status = "skipped" if skipped else "passed" if passed else "failed"
-        payload: dict[str, Any] = {
-            "test_name": self.test_name,
-            "run_id": self.run_id,
-            "status": status,
-            "start_time": self.start_time.isoformat(timespec="milliseconds"),
-            "end_time": self.end_time.isoformat(timespec="milliseconds"),
-            "total_time_seconds": round(self.total_time_seconds, 6),
-        }
+            self.end_time = datetime.now(tz=timezone.utc)
+            self.total_time_seconds = max(0.0, time.monotonic() - self._started_monotonic)
+            status = "skipped" if skipped else "passed" if passed else "failed"
+            payload: dict[str, Any] = {
+                "test_name": self.test_name,
+                "run_id": self.run_id,
+                "status": status,
+                "start_time": self.start_time.isoformat(timespec="milliseconds"),
+                "end_time": self.end_time.isoformat(timespec="milliseconds"),
+                "total_time_seconds": round(self.total_time_seconds, 6),
+            }
 
-        temporary_path = self.summary_path.with_suffix(".json.tmp")
-        temporary_path.write_text(
-            json.dumps(payload, indent=2, sort_keys=True) + "\n",
-            encoding="utf8",
-        )
-        temporary_path.replace(self.summary_path)
-        self._finalized = True
+            temporary_path = self.summary_path.with_suffix(".json.tmp")
+            temporary_path.write_text(
+                json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                encoding="utf8",
+            )
+            temporary_path.replace(self.summary_path)
+            self._finalized = True
