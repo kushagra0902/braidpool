@@ -22,12 +22,15 @@ from typing import Sequence
 from test_framework.cleanup_manager import terminate_process_group
 from test_framework.constants import STDERR_LOG_NAME, STDOUT_LOG_NAME, TEST_EXIT_PASSED, TEST_EXIT_SKIPPED
 from test_framework.logging_utils import configure_stream_logger, log_duration, log_event, log_exception
+from test_framework.report_manager import ReportManager
 
 
 logger = logging.getLogger(__name__)
 
 # Set of test scripts to run, in order. Extended tests are optional.
 BASE_SCRIPTS = [
+    "feature_framework_lifecycle.py",
+    "feature_framework_skip.py",
 ]
 
 EXTENDED_SCRIPTS: list[str] = []
@@ -81,6 +84,8 @@ class RunningJob:
     testdir: Path
     stdout_path: Path
     stderr_path: Path
+    #if the test fails, we want to make sure we have a summary.json file for it, so we can use this fallback report manager to finalize it if needed
+    fallback_report: ReportManager | None = None 
     timed_out: bool = False
 
     @property
@@ -111,6 +116,12 @@ class RunningJob:
             status = "Skipped"
         else:
             status = "Failed"
+        if (
+            status == "Failed"
+            and self.fallback_report is not None
+            and not self.fallback_report.summary_path.exists()
+        ):
+            self.fallback_report.finalize(passed=False)
         return TestResult(
             name=self.name,
             status=status,
@@ -172,10 +183,9 @@ class TestHandler:
                     self.running.remove(job)
                     finished.append(job.to_result())
 
-            self._fill_available_slots()
-
             if finished:
                 return finished
+            self._fill_available_slots()
             if self.done():
                 return []
             time.sleep(0.1)
@@ -202,6 +212,11 @@ class TestHandler:
         testdir.mkdir(parents=True, exist_ok=True)
         stdout_path = testdir / STDOUT_LOG_NAME
         stderr_path = testdir / STDERR_LOG_NAME
+        fallback_report = ReportManager(
+            test_base,
+            f"{test_base}-{testdir.name}",
+            testdir / "reports",
+        )
         args = [
             sys.executable,
             str(self.tests_dir / script_name),
@@ -248,6 +263,7 @@ class TestHandler:
                 testdir=testdir,
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
+                fallback_report=fallback_report,
             )
         )
         log_event(logger, "runner_test_started", test=scheduled.display_name, pid=proc.pid, port_seed=scheduled.port_seed)
