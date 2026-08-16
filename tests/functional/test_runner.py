@@ -307,8 +307,6 @@ def schedule_tests(test_list: list[str]) -> list[ScheduledTest]:
     return scheduled
 
 
-
-
 # Read last N lines of a file efficiently without loading the whole file, used for printing combined logs on failure with a specified line limit.
 def tail_file(path: Path, lines: int) -> str:
     """Return the last *lines* lines without loading the whole file."""

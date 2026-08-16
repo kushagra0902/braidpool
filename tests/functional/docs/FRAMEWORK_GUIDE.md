@@ -214,7 +214,10 @@ self.nodes[0].rpc.wait_for_peers(1, timeout=30.0)
 ```
 
 Use `self.sync_all()` to wait until all Braidpool nodes report the same bead
-count. It checks counts, not complete DAG equality.
+count. It checks counts, not complete DAG equality. An explicit
+`self.sync_all(timeout=...)` value and the configured
+`bead_propagation_timeout` default are both expressed in unscaled seconds;
+`--timeout-factor` is applied exactly once by `sync_all()`.
 
 Skip when a required runtime capability is unavailable:
 

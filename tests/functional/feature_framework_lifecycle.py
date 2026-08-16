@@ -6,10 +6,21 @@ from __future__ import annotations
 import argparse
 import random
 import time
+from unittest.mock import Mock
 
 from test_framework.network_config import NetworkConfig
 from test_framework.test_framework import BraidpoolTestFramework
 from test_framework.util import assert_equal
+
+
+class SyncAllTimeoutProbe(BraidpoolTestFramework):
+    """Expose ``sync_all`` timeout handling without starting a network."""
+
+    def set_test_params(self) -> None:
+        self.config = NetworkConfig(bead_propagation_timeout=60.0)
+
+    def run_test(self) -> None:
+        """Satisfy the framework subclass contract; this probe is not run."""
 
 
 class FrameworkLifecycleTest(BraidpoolTestFramework):
@@ -85,6 +96,26 @@ class FrameworkLifecycleTest(BraidpoolTestFramework):
 
         self.wait_until(ready_after_three_attempts, timeout=1.0, interval=0.001)
         assert_equal(attempts, 3)
+
+        timeout_probe = SyncAllTimeoutProbe(__file__)
+        timeout_probe.parse_args(["--timeout-factor=2"])
+        timeout_probe.set_test_params()
+        timeout_probe._apply_option_overrides()
+        assert_equal(timeout_probe.config.bead_propagation_timeout, 60.0)
+
+        timeout_probe.node_manager = Mock()
+        sync_all = timeout_probe.node_manager.sync_all
+
+        timeout_probe.sync_all()
+        sync_all.assert_called_once_with(timeout=120.0)
+        sync_all.reset_mock()
+
+        timeout_probe.sync_all(timeout=60.0)
+        sync_all.assert_called_once_with(timeout=120.0)
+        sync_all.reset_mock()
+
+        timeout_probe.sync_all(timeout=timeout_probe.config.bead_propagation_timeout)
+        sync_all.assert_called_once_with(timeout=120.0)
         self.log.info("Framework lifecycle assertions passed")
 
 

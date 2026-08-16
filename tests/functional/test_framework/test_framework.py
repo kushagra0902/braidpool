@@ -264,14 +264,17 @@ class BraidpoolTestFramework(metaclass=BraidpoolTestMetaClass):
         )
 
     def sync_all(self, timeout: float | None = None) -> None:
-        """Wait for all Braidpool nodes to agree on their bead count."""
+        """Wait for all Braidpool nodes to agree on their bead count.
+
+        ``timeout`` and the configured default are expressed before applying
+        this test's timeout factor.
+        """
         if self.node_manager is None:
             raise RuntimeError("The test network has not been set up")
-        effective_timeout = (
-            self.config.bead_propagation_timeout
-            if timeout is None
-            else timeout * self.timeout_factor
+        base_timeout = (
+            self.config.bead_propagation_timeout if timeout is None else timeout
         )
+        effective_timeout = base_timeout * self.timeout_factor
         self.node_manager.sync_all(timeout=effective_timeout)
 
     @staticmethod
@@ -297,13 +300,14 @@ class BraidpoolTestFramework(metaclass=BraidpoolTestMetaClass):
         if self.options.minerd_bin is not None:
             self.config.minerd_bin_path = self.options.minerd_bin
 
+        # sync_all() scales bead_propagation_timeout after choosing between
+        # the configured default and a caller-provided timeout.
         for field_name in (
             "startup_timeout_braidpool",
             "startup_timeout_btc",
             "startup_timeout_minerd",
             "rpc_timeout",
             "peer_connection_timeout",
-            "bead_propagation_timeout",
         ):
             current_value = getattr(self.config, field_name)
             setattr(self.config, field_name, current_value * self.timeout_factor)
